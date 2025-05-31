@@ -5,16 +5,16 @@ import type { ChangeEvent } from 'react';
 import { useState, useRef } from 'react';
 import { useFormStatus as useFormStatusActual } from 'react-dom';
 import { createMessageAction } from '@/lib/actions';
+import type { Message } from '@/types';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, Paperclip, Image as ImageIcon, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
-// Removed Message type import as it's no longer constructing the object client-side for the callback
 
 interface MessageFormProps {
-  onMessageCommitted: () => void; // Simplified callback
+  onMessageCommitted: (newMessage: Message) => void;
 }
 
 function SubmitButton() {
@@ -69,15 +69,14 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
   };
 
   const handleSubmit = async (formData: FormData) => {
-    // If there's a file preview (image), add it to formData so server action can access it
     if (filePreview && file?.type.startsWith('image/')) {
         formData.append('filePreview', filePreview);
     }
 
     const result = await createMessageAction(formData);
-    if (result?.success) {
+    if (result?.success && result.message) {
       toast({ title: "Success", description: result.success });
-      onMessageCommitted(); // Call the simplified callback
+      onMessageCommitted(result.message);
 
       setContent('');
       setFile(null);

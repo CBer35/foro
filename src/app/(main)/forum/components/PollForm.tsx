@@ -4,15 +4,15 @@
 import { useState, useRef } from 'react';
 import { useFormStatus as useFormStatusActual } from 'react-dom';
 import { createPollAction } from '@/lib/actions';
+import type { Poll } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Trash2, ListPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// Removed Poll, PollOption type imports as client-side construction for callback is removed
 
 interface PollFormProps {
-  onPollCreated: () => void; // Simplified callback
+  onPollCreated: (newPoll: Poll) => void;
 }
 
 function SubmitButton() {
@@ -68,9 +68,9 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
     
     const result = await createPollAction(formData); 
 
-    if (result?.success) {
+    if (result?.success && result.poll) {
       toast({ title: "Success", description: result.success });
-      onPollCreated(); // Call simplified callback
+      onPollCreated(result.poll);
 
       setQuestion('');
       setOptions(['', '']);
@@ -122,4 +122,3 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
     </form>
   );
 }
-

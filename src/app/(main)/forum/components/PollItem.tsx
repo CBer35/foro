@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState } from 'react';
-import type { Poll, PollOption } from '@/types';
+import type { Poll } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -15,10 +16,10 @@ import { Progress } from '@/components/ui/progress';
 interface PollItemProps {
   poll: Poll;
   currentNickname: string;
-  onPollVoted: () => void;
+  onPollUpdated: (updatedPoll: Poll) => void;
 }
 
-export default function PollItem({ poll, currentNickname, onPollVoted }: PollItemProps) {
+export default function PollItem({ poll, currentNickname, onPollUpdated }: PollItemProps) {
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -30,14 +31,14 @@ export default function PollItem({ poll, currentNickname, onPollVoted }: PollIte
     }
     setIsSubmitting(true);
     const result = await votePollAction(poll.id, selectedOptionId);
-    if (result?.success) {
+    if (result?.success && result.updatedPoll) {
       toast({ title: "Success", description: result.success });
-      onPollVoted(); // Refresh poll list
+      onPollUpdated(result.updatedPoll); 
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }
     setIsSubmitting(false);
-    setSelectedOptionId(null); // Reset selection
+    setSelectedOptionId(null); 
   };
 
   return (

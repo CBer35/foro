@@ -5,7 +5,7 @@ import type { Message } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Repeat, Paperclip } from 'lucide-react'; // Removed Download for now
+import { Repeat, Paperclip } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -14,17 +14,17 @@ import Image from 'next/image';
 interface MessageItemProps {
   message: Message;
   currentNickname: string;
-  onRepostSuccess: () => void; // Callback to refresh messages after repost
+  onMessageUpdated: (updatedMessage: Message) => void; 
 }
 
-export default function MessageItem({ message, currentNickname, onRepostSuccess }: MessageItemProps) {
+export default function MessageItem({ message, currentNickname, onMessageUpdated }: MessageItemProps) {
   const { toast } = useToast();
 
   const handleRepost = async () => {
     const result = await repostMessageAction(message.id);
-    if (result?.success) {
+    if (result?.success && result.updatedMessage) {
       toast({ title: "Success", description: result.success });
-      onRepostSuccess(); // Trigger refresh of message list
+      onMessageUpdated(result.updatedMessage); 
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }

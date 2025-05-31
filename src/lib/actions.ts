@@ -5,8 +5,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { addMessage, incrementMessageReposts, addPoll, voteOnPoll } from './file-store';
-import type { Message, Poll, PollOption } from '@/types'; // PollOption might not be directly used here now
+import { addMessage, incrementMessageReposts, addPoll, voteOnPoll, getMessages, getPolls } from './file-store';
+import type { Message, Poll } from '@/types';
 
 const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
@@ -35,16 +35,12 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
   redirect('/forum');
 }
 
-export async function createMessageAction(formData: FormData) {
+export async function createMessageAction(formData: FormData): Promise<{ success?: string; message?: Message; error?: string; errors?: any; }> {
   const nickname = cookies().get('nickname')?.value;
 
   if (!nickname) {
-     console.error('CreateMessageAction: Nickname cookie not found. Cookies:', cookies().getAll());
     return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
-  // console.log('CreateMessageAction: Nickname found:', nickname);
-  // console.log('CreateMessageAction: All cookies:', cookies().getAll());
-
 
   const content = formData.get('content') as string;
   const file = formData.get('file') as File | null;
@@ -57,7 +53,6 @@ export async function createMessageAction(formData: FormData) {
     const messageData: Omit<Message, 'id' | 'timestamp' | 'reposts'> = {
       nickname,
       content,
-      // reposts will be initialized by addMessage
     };
 
     if (file && file.size > 0) {
@@ -68,10 +63,10 @@ export async function createMessageAction(formData: FormData) {
        }
     }
     
-    await addMessage(messageData);
+    const newMessage = await addMessage(messageData);
 
     revalidatePath('/forum'); 
-    return { success: 'Message posted successfully!' };
+    return { success: 'Message posted successfully!', message: newMessage };
 
   } catch (e) {
     console.error('Error posting message:', e);
@@ -79,7 +74,7 @@ export async function createMessageAction(formData: FormData) {
   }
 }
 
-export async function repostMessageAction(messageId: string) {
+export async function repostMessageAction(messageId: string): Promise<{ success?: string; updatedMessage?: Message; error?: string; }> {
   const nickname = cookies().get('nickname')?.value;
   if (!nickname) {
     return { error: 'User not authenticated.' };
@@ -91,14 +86,14 @@ export async function repostMessageAction(messageId: string) {
       return { error: 'Message not found or failed to repost.'};
     }
     revalidatePath('/forum');
-    return { success: 'Message reposted!' };
+    return { success: 'Message reposted!', updatedMessage };
   } catch (e) {
     console.error('Error reposting message:', e);
     return { error: 'Failed to repost message.' };
   }
 }
 
-export async function createPollAction(formData: FormData) {
+export async function createPollAction(formData: FormData): Promise<{ success?: string; poll?: Poll; error?: string; }> {
   const nickname = cookies().get('nickname')?.value;
   if (!nickname) {
     return { error: 'User not authenticated.' };
@@ -114,23 +109,23 @@ export async function createPollAction(formData: FormData) {
   }
   
   try {
-    const pollData = { // Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'options'> & { options: string[] }
+    const pollData = {
       nickname,
       question,
       options: optionTexts,
     };
 
-    await addPoll(pollData);
+    const newPoll = await addPoll(pollData);
 
     revalidatePath('/forum');
-    return { success: 'Poll created successfully!' };
+    return { success: 'Poll created successfully!', poll: newPoll };
   } catch (e) {
     console.error('Error creating poll:', e);
     return { error: 'Failed to create poll.' };
   }
 }
 
-export async function votePollAction(pollId: string, optionId: string) {
+export async function votePollAction(pollId: string, optionId: string): Promise<{ success?: string; updatedPoll?: Poll; error?: string; }> {
   const nickname = cookies().get('nickname')?.value;
   if (!nickname) {
     return { error: 'User not authenticated.' };
@@ -142,10 +137,10 @@ export async function votePollAction(pollId: string, optionId: string) {
       return { error: 'Poll or option not found, or failed to vote.'};
     }
     revalidatePath('/forum');
-    return { success: 'Voted successfully!' };
+    return { success: 'Voted successfully!', updatedPoll };
   } catch (e) {
     console.error('Error voting on poll:', e);
-    if (typeof e === 'string') {
+    if (typeof e === 'string') { // Assuming voteOnPoll might throw string errors for specific cases
       return { error: e };
     }
     return { error: 'Failed to vote on poll.' };
