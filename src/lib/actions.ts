@@ -140,7 +140,7 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
     return { success: 'Voted successfully!', updatedPoll };
   } catch (e) {
     console.error('Error voting on poll:', e);
-    if (typeof e === 'string') { // Assuming voteOnPoll might throw string errors for specific cases
+    if (typeof e === 'string') { 
       return { error: e };
     }
     return { error: 'Failed to vote on poll.' };
@@ -150,4 +150,15 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 export async function handleSignOut() {
   cookies().delete('nickname');
   redirect('/');
+}
+
+export async function fetchLatestMessagesAction(): Promise<Message[]> {
+  try {
+    // Revalidate path to ensure subsequent direct loads get fresh data, though client polling drives updates
+    revalidatePath('/forum'); 
+    return await getMessages();
+  } catch (error) {
+    console.error("Error in fetchLatestMessagesAction:", error);
+    return []; // Return empty array on error to prevent client crash
+  }
 }

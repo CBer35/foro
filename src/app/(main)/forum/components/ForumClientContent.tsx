@@ -8,8 +8,8 @@ import MessageForm from './MessageForm';
 import PollItem from './PollItem';
 import PollForm from './PollForm';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from '@/components/ui/card'; // Keep Card import for potential future use if skeletons are re-added
 import { MessageSquare, ListChecks } from 'lucide-react';
+import { fetchLatestMessagesAction } from '@/lib/actions';
 
 interface ForumClientContentProps {
   initialNickname: string;
@@ -33,8 +33,27 @@ export default function ForumClientContent({
     setPolls(initialPolls);
   }, [initialPolls]);
 
+  useEffect(() => {
+    const fetchAndUpdateMessages = async () => {
+      try {
+        const latestMessages = await fetchLatestMessagesAction();
+        setMessages(latestMessages);
+      } catch (error) {
+        console.error("Error fetching latest messages:", error);
+        // Optionally: show a toast to the user indicating an error fetching updates
+      }
+    };
+
+    // Fetch immediately on mount in case initialMessages is stale
+    fetchAndUpdateMessages(); 
+
+    const intervalId = setInterval(fetchAndUpdateMessages, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(intervalId); // Cleanup interval on component unmount
+  }, []); // Empty dependency array ensures this runs once on mount and cleans up on unmount
+
   const handleMessageCommitted = (newMessage: Message) => {
-    setMessages(prevMessages => [newMessage, ...prevMessages]);
+    setMessages(prevMessages => [newMessage, ...prevMessages.filter(msg => msg.id !== newMessage.id)]);
   };
   
   const handleMessageUpdated = (updatedMessage: Message) => {
@@ -44,7 +63,7 @@ export default function ForumClientContent({
   };
 
   const handlePollCreated = (newPoll: Poll) => {
-    setPolls(prevPolls => [newPoll, ...prevPolls]);
+    setPolls(prevPolls => [newPoll, ...prevPolls.filter(p => p.id !== newPoll.id)]);
   };
 
   const handlePollUpdated = (updatedPoll: Poll) => {
