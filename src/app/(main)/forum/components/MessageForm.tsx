@@ -15,6 +15,7 @@ import Image from 'next/image';
 
 interface MessageFormProps {
   onMessageCommitted: (newMessage: Message) => void;
+  parentId?: string; // For replying to a message
 }
 
 function SubmitButton() {
@@ -26,7 +27,7 @@ function SubmitButton() {
   );
 }
 
-export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
+export default function MessageForm({ onMessageCommitted, parentId }: MessageFormProps) {
   const [content, setContent] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -37,8 +38,12 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 200 * 1024 * 1024) { // 200MB limit
-        toast({ title: "File too large", description: "Please select a file smaller than 200MB.", variant: "destructive"});
+      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ 
+          title: "File too large", 
+          description: "Please select a file smaller than 5MB. This limit is for previews and attachment metadata.", 
+          variant: "destructive"
+        });
         setFile(null);
         setFilePreview(null);
         if(fileInputRef.current) fileInputRef.current.value = ""; 
@@ -73,7 +78,9 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
         formData.append('filePreview', filePreview);
     }
 
-    const result = await createMessageAction(formData);
+    // Pass parentId to the action if it exists
+    const result = await createMessageAction(formData, parentId);
+    
     if (result?.success && result.message) {
       toast({ title: "Success", description: result.success });
       onMessageCommitted(result.message);
@@ -93,7 +100,7 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
       <div>
         <Textarea
           name="content"
-          placeholder="Share your thoughts..."
+          placeholder={parentId ? "Write your reply..." : "Share your thoughts..."}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           required
@@ -108,11 +115,11 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
           </Button>
           <Input
             type="file"
-            name="file"
+            name="file" // This name is used by formData.get('file') in the action
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
-            accept="image/*,application/pdf,.doc,.docx,.txt"
+            accept="image/*,application/pdf,.doc,.docx,.txt,.zip,.rar" // Example accepted types
           />
           {file && (
             <div className="flex items-center gap-1 text-sm text-muted-foreground">

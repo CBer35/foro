@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { addMessage, incrementMessageReposts, addPoll, voteOnPoll, getMessages, getPolls } from './file-store';
+import { addMessage, incrementMessageReposts, addPoll, voteOnPoll, getMessages } from './file-store';
 import type { Message, Poll } from '@/types';
 
 const nicknameSchema = z.object({
@@ -35,42 +35,57 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
   redirect('/forum');
 }
 
-export async function createMessageAction(formData: FormData): Promise<{ success?: string; message?: Message; error?: string; errors?: any; }> {
-  const nickname = cookies().get('nickname')?.value;
+export async function createMessageAction(
+  formData: FormData,
+  parentId?: string // Optional parentId for replies
+): Promise<{ success?: string; message?: Message; error?: string; errors?: any; }> {
+  const cookieStore = cookies();
+  const nickname = cookieStore.get('nickname')?.value;
 
   if (!nickname) {
     return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
 
   const content = formData.get('content') as string;
-  const file = formData.get('file') as File | null;
+  const fileInput = formData.get('file') as File | null; // Received as File object by Next.js
 
   if (!content || content.trim().length === 0) {
     return { error: 'Message content cannot be empty.' };
   }
 
   try {
-    const messageData: Omit<Message, 'id' | 'timestamp' | 'reposts'> = {
+    // Prepare the core message data object
+    const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string } = {
       nickname,
       content,
     };
 
-    if (file && file.size > 0) {
-      messageData.fileName = file.name;
-      messageData.fileType = file.type;
-       if (formData.has('filePreview')) {
-         messageData.filePreview = formData.get('filePreview') as string;
-       }
+    // Add parentId if this is a reply
+    if (parentId) {
+      messageDetails.parentId = parentId;
+    }
+
+    // Add file metadata if a file was provided
+    if (fileInput && fileInput.size > 0) {
+      messageDetails.fileName = fileInput.name;
+      messageDetails.fileType = fileInput.type;
+      
+      // The filePreview (data URI for images) is appended to formData by the client
+      const filePreview = formData.get('filePreview') as string | null;
+      if (filePreview) {
+        messageDetails.filePreview = filePreview;
+      }
     }
     
-    const newMessage = await addMessage(messageData);
+    const newMessage = await addMessage(messageDetails);
 
     revalidatePath('/forum'); 
     return { success: 'Message posted successfully!', message: newMessage };
 
   } catch (e) {
     console.error('Error posting message:', e);
-    return { error: 'Failed to post message. Please try again.' };
+    const errorMessage = e instanceof Error ? e.message : 'Failed to post message. Please try again.';
+    return { error: errorMessage };
   }
 }
 
@@ -140,8 +155,8 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
     return { success: 'Voted successfully!', updatedPoll };
   } catch (e) {
     console.error('Error voting on poll:', e);
-    if (typeof e === 'string') { 
-      return { error: e };
+    if (e instanceof Error) { 
+      return { error: e.message };
     }
     return { error: 'Failed to vote on poll.' };
   }
@@ -154,11 +169,10 @@ export async function handleSignOut() {
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    // Revalidate path to ensure subsequent direct loads get fresh data, though client polling drives updates
-    revalidatePath('/forum'); 
+    // revalidatePath('/forum'); // Not strictly necessary here for polling, but doesn't hurt
     return await getMessages();
   } catch (error) {
     console.error("Error in fetchLatestMessagesAction:", error);
-    return []; // Return empty array on error to prevent client crash
+    return []; 
   }
 }

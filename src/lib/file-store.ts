@@ -13,6 +13,11 @@ async function ensureDataDirExists() {
   try {
     await fs.access(dataDir);
   } catch (error) {
+    // If error is other than directory not existing, rethrow it.
+    // Otherwise, create the directory.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+    }
     await fs.mkdir(dataDir, { recursive: true });
   }
 }
@@ -20,19 +25,18 @@ async function ensureDataDirExists() {
 async function readFileData<T>(filePath: string): Promise<T[]> {
   await ensureDataDirExists();
   try {
-    await fs.access(filePath); // Check if file exists
+    await fs.access(filePath); 
     const fileContent = await fs.readFile(filePath, 'utf-8');
+    if (fileContent.trim() === '') return []; // Handle empty file
     return JSON.parse(fileContent) as T[];
   } catch (error) {
-    // If file doesn't exist or other error, return empty array
-    // Check if it's a "file not found" type error
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      // File doesn't exist, which is fine, return empty array
       return [];
     }
-    // For other errors (e.g. JSON parsing error, permissions), log and return empty
     console.error(`Error reading or parsing ${filePath}:`, error);
-    return [];
+    // To prevent data corruption, if parsing fails, maybe return empty or throw specific error
+    // For now, returning empty array to avoid breaking the app on bad JSON.
+    return []; 
   }
 }
 
@@ -42,35 +46,56 @@ async function writeFileData<T>(filePath: string, data: T[]): Promise<void> {
     await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (error) {
     console.error(`Error writing to ${filePath}:`, error);
-    throw error; // Re-throw to be handled by the caller
+    throw error; 
   }
 }
 
 // Messages
 export async function getMessages(): Promise<Message[]> {
   const messages = await readFileData<Message>(messagesFilePath);
-  // Sort by timestamp descending (newest first)
   return messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
-export async function addMessage(message: Omit<Message, 'id' | 'timestamp' | 'reposts'> & { filePreview?: string; fileName?: string; fileType?: string; }): Promise<Message> {
-  const messages = await getMessages();
+export async function addMessage(
+  messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
+): Promise<Message> {
+  const messages = await readFileData<Message>(messagesFilePath); // Read current messages first
+
   const newMessage: Message = {
-    ...message,
+    nickname: messageDetails.nickname,
+    content: messageDetails.content,
+    filePreview: messageDetails.filePreview,
+    fileName: messageDetails.fileName,
+    fileType: messageDetails.fileType,
+    parentId: messageDetails.parentId,
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
+    replyCount: 0, // Initialize replyCount to 0
   };
-  messages.unshift(newMessage); // Add to the beginning for chronological order (newest first)
+
+  messages.unshift(newMessage); // Add new message to the beginning
+
+  // If this message is a reply, increment the replyCount of the parent message
+  if (newMessage.parentId) {
+    const parentMessageIndex = messages.findIndex(m => m.id === newMessage.parentId);
+    if (parentMessageIndex > -1) {
+      messages[parentMessageIndex].replyCount = (messages[parentMessageIndex].replyCount || 0) + 1;
+    } else {
+      // This case should ideally not happen if parentId is always valid
+      console.warn(`Parent message with id ${newMessage.parentId} not found for reply ${newMessage.id}`);
+    }
+  }
+
   await writeFileData<Message>(messagesFilePath, messages);
   return newMessage;
 }
 
 export async function incrementMessageReposts(messageId: string): Promise<Message | null> {
-  let messages = await getMessages();
+  let messages = await readFileData<Message>(messagesFilePath);
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
-    messages[messageIndex].reposts += 1;
+    messages[messageIndex].reposts = (messages[messageIndex].reposts || 0) + 1;
     await writeFileData<Message>(messagesFilePath, messages);
     return messages[messageIndex];
   }
@@ -80,7 +105,6 @@ export async function incrementMessageReposts(messageId: string): Promise<Messag
 // Polls
 export async function getPolls(): Promise<Poll[]> {
   const polls = await readFileData<Poll>(pollsFilePath);
-  // Sort by timestamp descending (newest first)
   return polls.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
@@ -98,7 +122,7 @@ export async function addPoll(pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVo
     timestamp: new Date().toISOString(),
     totalVotes: 0,
   };
-  polls.unshift(newPoll); // Add to the beginning
+  polls.unshift(newPoll); 
   await writeFileData<Poll>(pollsFilePath, polls);
   return newPoll;
 }
@@ -112,7 +136,7 @@ export async function voteOnPoll(pollId: string, optionId: string): Promise<Poll
     if (optionIndex > -1) {
       currentPoll.options[optionIndex].votes += 1;
       currentPoll.totalVotes += 1;
-      polls[pollIndex] = currentPoll;
+      // No need to reassign: polls[pollIndex] = currentPoll; as currentPoll is a reference
       await writeFileData<Poll>(pollsFilePath, polls);
       return currentPoll;
     } else {
@@ -123,7 +147,3 @@ export async function voteOnPoll(pollId: string, optionId: string): Promise<Poll
    console.error(`Poll ${pollId} not found for voting`);
   return null;
 }
-
-// Helper to initialize empty files if they don't exist, called once on server start perhaps
-// Or handled by readFileData returning [] if not found.
-// For this setup, ensureDataDirExists and readFileData handling ENOENT is sufficient.
