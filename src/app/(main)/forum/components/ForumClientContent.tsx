@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -8,6 +9,7 @@ import PollItem from './PollItem';
 import PollForm from './PollForm';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card } from '@/components/ui/card'; // Added Card import
 import { MessageSquare, ListChecks } from 'lucide-react';
 
 interface ForumClientContentProps {
