@@ -1,20 +1,24 @@
+
 'use client';
 
 import { useState, useRef } from 'react';
-import { useFormStatus } from 'react-dom';
+import type { useFormStatus } from 'react-dom'; // Corrected: Keep type import
+import { useFormStatus as useFormStatusActual } from 'react-dom'; // Use actual hook
 import { createPollAction } from '@/lib/actions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Trash2, ListPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { Poll, PollOption } from '@/types'; // Import Poll and PollOption
 
 interface PollFormProps {
-  onPollCreated: () => void;
+  // Callback with client-side constructed poll data
+  onPollCreated: (pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'>) => void;
 }
 
 function SubmitButton() {
-  const { pending } = useFormStatus();
+  const { pending } = useFormStatusActual(); // Use actual hook
   return (
     <Button type="submit" disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Creating Poll...' : <><ListPlus className="mr-2 h-4 w-4" /> Create Poll</>}
@@ -52,13 +56,39 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
   };
 
   const handleSubmit = async (formData: FormData) => {
-    const result = await createPollAction(formData);
+    // Client-side validation before calling server action
+    const pollQuestion = formData.get('question') as string;
+    const pollOptionsFromForm = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
+
+    if (!pollQuestion || pollQuestion.trim().length === 0) {
+      toast({ title: "Error", description: "Poll question cannot be empty.", variant: "destructive" });
+      return;
+    }
+    if (pollOptionsFromForm.length < 2) {
+      toast({ title: "Error", description: "Poll must have at least two options.", variant: "destructive" });
+      return;
+    }
+    
+    // Server action is primarily for backend processing / revalidation
+    const result = await createPollAction(formData); 
+
     if (result?.success) {
       toast({ title: "Success", description: result.success });
+      
+      // Construct poll data for client-side state update
+      const newPollClientData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'> = {
+        question: pollQuestion,
+        options: pollOptionsFromForm.map((optText, idx) => ({
+          id: `opt-${Date.now()}-${idx}`, // Simple unique ID for option
+          text: optText,
+          votes: 0,
+        })),
+      };
+      onPollCreated(newPollClientData); // Pass client-side constructed data
+
       setQuestion('');
       setOptions(['', '']);
       formRef.current?.reset();
-      onPollCreated();
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }
@@ -106,4 +136,3 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
     </form>
   );
 }
-

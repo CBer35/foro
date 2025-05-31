@@ -1,10 +1,11 @@
+
 'use client';
 
 import type { Message } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Repeat, Paperclip, Download } from 'lucide-react';
+import { Repeat, Paperclip } from 'lucide-react'; // Removed Download for now
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -13,24 +14,24 @@ import Image from 'next/image';
 interface MessageItemProps {
   message: Message;
   currentNickname: string;
+  onRepostSuccess: () => void; // Callback to refresh messages after repost
 }
 
-export default function MessageItem({ message, currentNickname }: MessageItemProps) {
+export default function MessageItem({ message, currentNickname, onRepostSuccess }: MessageItemProps) {
   const { toast } = useToast();
 
   const handleRepost = async () => {
-    // In a real app, this would likely update server state and re-fetch or use optimistic updates.
-    // For now, it's a placeholder action.
     const result = await repostMessageAction(message.id);
     if (result?.success) {
       toast({ title: "Success", description: result.success });
-      // Potentially update UI locally if not relying on revalidatePath
+      onRepostSuccess(); // Trigger refresh of message list
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }
   };
   
   const getInitials = (name: string) => {
+    if (!name) return '??';
     return name.substring(0, 2).toUpperCase();
   };
 
@@ -41,7 +42,7 @@ export default function MessageItem({ message, currentNickname }: MessageItemPro
           <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
         </Avatar>
         <div>
-          <CardTitle className="text-lg font-semibold">{message.nickname}</CardTitle>
+          <CardTitle className="text-lg font-semibold">{message.nickname || 'Anonymous'}</CardTitle>
           <p className="text-xs text-muted-foreground">
             {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
           </p>
@@ -64,16 +65,11 @@ export default function MessageItem({ message, currentNickname }: MessageItemPro
                 data-ai-hint="attached image"
               />
             )}
-             {/* Basic placeholder for non-image files */}
             {!message.fileType?.startsWith('image/') && message.fileType && (
                <div className="p-2 bg-muted rounded-md text-xs">
                  File type: {message.fileType} (Preview not available)
                </div>
             )}
-            {/* In a real app, you might add a download button for non-image files */}
-            {/* <Button variant="outline" size="sm" className="mt-2">
-              <Download className="h-4 w-4 mr-2" /> Download
-            </Button> */}
           </div>
         )}
       </CardContent>

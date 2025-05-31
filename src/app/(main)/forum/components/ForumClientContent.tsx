@@ -9,18 +9,16 @@ import PollItem from './PollItem';
 import PollForm from './PollForm';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card } from '@/components/ui/card'; // Added Card import
+import { Card } from '@/components/ui/card';
 import { MessageSquare, ListChecks } from 'lucide-react';
 
 interface ForumClientContentProps {
   initialNickname: string;
 }
 
-// Mock data fetching functions (replace with actual API calls if backend exists)
+// Mock data fetching functions
 const fetchMessages = async (): Promise<Message[]> => {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  // Return some default messages or load from localStorage for demo
+  await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay for faster refresh perception
   const storedMessages = localStorage.getItem('forumMessages');
   if (storedMessages) return JSON.parse(storedMessages).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)}));
   return [
@@ -30,7 +28,7 @@ const fetchMessages = async (): Promise<Message[]> => {
 };
 
 const fetchPolls = async (): Promise<Poll[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 100));
   const storedPolls = localStorage.getItem('forumPolls');
   if (storedPolls) return JSON.parse(storedPolls).map((p: Poll) => ({...p, timestamp: new Date(p.timestamp)}));
   return [
@@ -47,8 +45,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
 
   const loadMessages = useCallback(async () => {
     setIsLoadingMessages(true);
-    const fetchedMessages = await fetchMessages(); // In a real app, this would pass nickname for context
-    // Sort messages by timestamp descending
+    const fetchedMessages = await fetchMessages();
     fetchedMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     setMessages(fetchedMessages);
     setIsLoadingMessages(false);
@@ -67,49 +64,50 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
     loadPolls();
   }, [loadMessages, loadPolls]);
 
-  // Persist to localStorage for demo purposes
   useEffect(() => {
-    if (messages.length > 0 || localStorage.getItem('forumMessages')) { // Avoid overwriting initial empty state with empty
+    if (!isLoadingMessages && (messages.length > 0 || localStorage.getItem('forumMessages'))) {
         localStorage.setItem('forumMessages', JSON.stringify(messages));
     }
-  }, [messages]);
+  }, [messages, isLoadingMessages]);
 
   useEffect(() => {
-     if (polls.length > 0 || localStorage.getItem('forumPolls')) {
+     if (!isLoadingPolls && (polls.length > 0 || localStorage.getItem('forumPolls'))) {
         localStorage.setItem('forumPolls', JSON.stringify(polls));
      }
-  }, [polls]);
+  }, [polls, isLoadingPolls]);
 
-  const handleNewMessage = (newMessageData: Omit<Message, 'id' | 'reposts' | 'timestamp'>) => {
+  const handleMessageCommitted = (newMessageData: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'>) => {
     const newMessage: Message = {
       ...newMessageData,
-      id: String(Date.now() + Math.random()), // Simple unique ID
+      nickname: initialNickname, // Use nickname from ForumPage props
+      id: String(Date.now() + Math.random()), 
       timestamp: new Date(),
       reposts: 0,
     };
-    setMessages(prevMessages => [newMessage, ...prevMessages]);
+    // Optimistically update the messages state
+    setMessages(prevMessages => [newMessage, ...prevMessages].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    // The useEffect for 'messages' will handle saving to localStorage.
   };
   
   const handleNewPoll = (newPollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes'>) => {
     const newPoll: Poll = {
       ...newPollData,
+      nickname: initialNickname,
       id: String(Date.now() + Math.random()),
       timestamp: new Date(),
-      totalVotes: 0,
+      totalVotes: newPollData.options.reduce((sum, opt) => sum + opt.votes, 0),
     };
-    setPolls(prevPolls => [newPoll, ...prevPolls]);
+    setPolls(prevPolls => [newPoll, ...prevPolls].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
 
-
-  // These are simplified callbacks. Server actions already handle revalidation.
-  // If not using revalidatePath, or for purely client-side state updates (not recommended with server actions),
-  // you would update state here. For this scaffold, revalidatePath should trigger useEffect again.
-  const onMessagePostedOrReposted = () => {
-    loadMessages(); // Re-fetch messages
+  // Called after a repost action is successful to refresh the message list
+  const onMessageReposted = () => {
+    loadMessages(); 
   };
 
-  const onPollCreatedOrVoted = () => {
-    loadPolls(); // Re-fetch polls
+  // Called after a poll is created or voted to refresh the poll list
+  const onPollInteractionSuccess = () => {
+    loadPolls();
   };
 
   return (
@@ -120,9 +118,9 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
       </TabsList>
       
       <TabsContent value="messages">
-        <MessageForm onMessagePosted={onMessagePostedOrReposted} />
+        <MessageForm onMessageCommitted={handleMessageCommitted} />
         <h2 className="text-2xl font-headline mb-4">Recent Messages</h2>
-        {isLoadingMessages ? (
+        {isLoadingMessages && messages.length === 0 ? ( // Show skeleton only on initial load or if empty
           Array.from({ length: 3 }).map((_, index) => (
             <Card key={index} className="mb-4 p-4">
               <div className="flex items-center space-x-3 mb-2">
@@ -141,16 +139,16 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
         ) : (
           <div className="space-y-4">
             {messages.map((msg) => (
-              <MessageItem key={msg.id} message={msg} currentNickname={initialNickname} />
+              <MessageItem key={msg.id} message={msg} currentNickname={initialNickname} onRepostSuccess={onMessageReposted} />
             ))}
           </div>
         )}
       </TabsContent>
       
       <TabsContent value="polls">
-        <PollForm onPollCreated={onPollCreatedOrVoted} />
+        <PollForm onPollCreated={handleNewPoll} /> 
         <h2 className="text-2xl font-headline mb-4">Active Polls</h2>
-        {isLoadingPolls ? (
+        {isLoadingPolls && polls.length === 0 ? ( // Show skeleton only on initial load or if empty
           Array.from({ length: 2 }).map((_, index) => (
              <Card key={index} className="mb-6 p-4">
               <Skeleton className="h-6 w-3/4 mb-2" />
@@ -166,7 +164,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
         ) : (
           <div className="space-y-6">
             {polls.map((poll) => (
-              <PollItem key={poll.id} poll={poll} currentNickname={initialNickname} onPollVoted={onPollCreatedOrVoted} />
+              <PollItem key={poll.id} poll={poll} currentNickname={initialNickname} onPollVoted={onPollInteractionSuccess} />
             ))}
           </div>
         )}

@@ -1,7 +1,10 @@
+
 'use client';
 
-import { useState, useRef, ChangeEvent } from 'react';
-import { useFormStatus } from 'react-dom';
+import type { ChangeEvent } from 'react';
+import { useState, useRef } from 'react';
+import type { useFormStatus } from 'react-dom'; // Corrected: Keep type import
+import { useFormStatus as useFormStatusActual } from 'react-dom'; // Use actual hook
 import { createMessageAction } from '@/lib/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -9,13 +12,15 @@ import { Input } from '@/components/ui/input';
 import { Send, Paperclip, Image as ImageIcon, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
+import type { Message } from '@/types';
 
 interface MessageFormProps {
-  onMessagePosted: () => void; // Callback to potentially refresh message list
+  // Callback with client-side constructed message data after server action success
+  onMessageCommitted: (messageData: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'>) => void;
 }
 
 function SubmitButton() {
-  const { pending } = useFormStatus();
+  const { pending } = useFormStatusActual(); // Use actual hook
   return (
     <Button type="submit" disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Posting...' : <><Send className="mr-2 h-4 w-4" /> Post Message</>}
@@ -23,7 +28,7 @@ function SubmitButton() {
   );
 }
 
-export default function MessageForm({ onMessagePosted }: MessageFormProps) {
+export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
   const [content, setContent] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -66,15 +71,29 @@ export default function MessageForm({ onMessagePosted }: MessageFormProps) {
   };
 
   const handleSubmit = async (formData: FormData) => {
+    // content from formData will be used by server action.
+    // We use client-side state (content, file, filePreview) to construct the object for onMessageCommitted.
+    const clientContent = content;
+    const clientFile = file;
+    const clientFilePreview = filePreview;
+
     const result = await createMessageAction(formData);
     if (result?.success) {
       toast({ title: "Success", description: result.success });
+
+      const messageDataForClient: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'> = {
+        content: clientContent,
+        filePreview: clientFilePreview,
+        fileName: clientFile?.name,
+        fileType: clientFile?.type,
+      };
+      onMessageCommitted(messageDataForClient);
+
       setContent('');
       setFile(null);
       setFilePreview(null);
-      formRef.current?.reset(); // Reset the form fields including file input
+      formRef.current?.reset(); 
       if (fileInputRef.current) fileInputRef.current.value = "";
-      onMessagePosted(); // Trigger refresh
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }
@@ -100,11 +119,11 @@ export default function MessageForm({ onMessagePosted }: MessageFormProps) {
           </Button>
           <Input
             type="file"
-            name="file"
+            name="file" // Name attribute for server action to pick up the file
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
-            accept="image/*,application/pdf,.doc,.docx,.txt" // Example file types
+            accept="image/*,application/pdf,.doc,.docx,.txt"
           />
           {file && (
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
