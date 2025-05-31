@@ -45,7 +45,7 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 1 week
     path: '/',
-    sameSite: 'Lax',
+    sameSite: 'Lax', // Explicitly set SameSite
   });
 
   redirect('/forum');
@@ -60,12 +60,15 @@ export async function createMessageAction(
 
   if (!nickname) {
     console.error("Authentication failed in createMessageAction: Nickname cookie not found or has no value.");
+    // console.log("All cookies received by createMessageAction:", cookieStore.getAll());
     return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled. Check server logs for cookie details.' };
   }
+  // console.log("Nickname found in createMessageAction:", nickname);
+
 
   const content = formData.get('content') as string;
   const fileInput = formData.get('file') as File | null;
-  const clientFilePreview = formData.get('filePreview') as string | null; // For images
+  const clientFilePreview = formData.get('filePreview') as string | null;
   const videoEmbedUrl = formData.get('videoEmbedUrl') as string | null;
 
   if (!content || content.trim().length === 0) {
@@ -85,15 +88,12 @@ export async function createMessageAction(
     }
 
     if (videoEmbedUrl && videoEmbedUrl.trim() !== '') {
-      // Prioritize video embed URL if provided
       messageDetails.videoEmbedUrl = videoEmbedUrl;
-      // Clear any file-related properties if a video URL is given
       messageDetails.fileName = undefined;
       messageDetails.fileType = undefined;
       messageDetails.fileUrl = undefined;
       messageDetails.filePreview = undefined;
     } else if (fileInput && fileInput.size > 0) {
-      // Process file upload if no video embed URL
       messageDetails.fileName = fileInput.name;
       messageDetails.fileType = fileInput.type;
 
@@ -110,12 +110,15 @@ export async function createMessageAction(
       if (fileInput.type.startsWith('image/') && clientFilePreview) {
         messageDetails.filePreview = clientFilePreview;
       }
-      messageDetails.videoEmbedUrl = undefined; // Ensure videoEmbedUrl is not set if file is uploaded
+      messageDetails.videoEmbedUrl = undefined;
     }
     
     const newMessage = await addMessage(messageDetails);
 
     revalidatePath('/forum'); 
+    if (parentId) {
+        revalidatePath(`/forum/message/${parentId}`); // Potentially revalidate a thread page if it exists
+    }
     return { success: 'Message posted successfully!', message: newMessage };
 
   } catch (e) {
@@ -199,15 +202,29 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().delete('nickname', { path: '/', sameSite: 'Lax' });
+  cookies().set('nickname', '', { maxAge: -1, path: '/', sameSite: 'Lax' }); // More robust way to delete
   redirect('/');
 }
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    return await getMessages();
+    // Fetch only top-level messages for the main feed
+    const allMessages = await getMessages();
+    return allMessages.filter(msg => !msg.parentId);
   } catch (error) {
     console.error("Error in fetchLatestMessagesAction:", error);
     return []; 
+  }
+}
+
+export async function fetchRepliesAction(parentId: string): Promise<Message[]> {
+  try {
+    const allMessages = await getMessages(); // This gets all messages, then we filter
+    const replies = allMessages.filter(msg => msg.parentId === parentId);
+    // Replies are typically shown oldest to newest within a thread
+    return replies.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  } catch (error) {
+    console.error("Error in fetchRepliesAction:", error);
+    return [];
   }
 }
