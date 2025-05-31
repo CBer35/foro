@@ -46,6 +46,7 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 1 week
     path: '/',
+    sameSite: 'Lax', // Explicitly set SameSite
   });
 
   redirect('/forum');
@@ -56,15 +57,22 @@ export async function createMessageAction(
   parentId?: string // Optional parentId for replies
 ): Promise<{ success?: string; message?: Message; error?: string; errors?: any; }> {
   const cookieStore = cookies();
-  const nickname = cookieStore.get('nickname')?.value;
+
+  // Diagnostic logging
+  console.log("All cookies in createMessageAction:", cookieStore.getAll());
+  const nicknameCookie = cookieStore.get('nickname');
+  console.log("Nickname cookie details in createMessageAction:", nicknameCookie);
+  
+  const nickname = nicknameCookie?.value;
 
   if (!nickname) {
-    return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
+    console.error("Authentication failed in createMessageAction: Nickname cookie not found or has no value.");
+    return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled. Check server logs for cookie details.' };
   }
 
   const content = formData.get('content') as string;
-  const fileInput = formData.get('file') as File | null; // Received as File object by Next.js
-  const clientFilePreview = formData.get('filePreview') as string | null; // Client-generated image preview
+  const fileInput = formData.get('file') as File | null;
+  const clientFilePreview = formData.get('filePreview') as string | null;
 
   if (!content || content.trim().length === 0) {
     return { error: 'Message content cannot be empty.' };
@@ -86,19 +94,16 @@ export async function createMessageAction(
       messageDetails.fileName = fileInput.name;
       messageDetails.fileType = fileInput.type;
 
-      // Generate a unique filename
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
       const extension = path.extname(fileInput.name);
       const uniqueFilename = `${path.basename(fileInput.name, extension)}-${uniqueSuffix}${extension}`;
       const filePath = path.join(uploadsDir, uniqueFilename);
       
-      // Convert File to Buffer and write to disk
       const fileBuffer = Buffer.from(await fileInput.arrayBuffer());
       await fs.writeFile(filePath, fileBuffer);
       
-      messageDetails.fileUrl = `/uploads/${uniqueFilename}`; // Store the public URL
+      messageDetails.fileUrl = `/uploads/${uniqueFilename}`; 
 
-      // If it's an image and client sent a preview, keep it for quick display
       if (fileInput.type.startsWith('image/') && clientFilePreview) {
         messageDetails.filePreview = clientFilePreview;
       }
@@ -190,13 +195,12 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().delete('nickname');
+  cookies().delete('nickname', { path: '/', sameSite: 'Lax' }); // Specify path and sameSite for delete
   redirect('/');
 }
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    // revalidatePath('/forum'); // Not strictly necessary here for polling, but doesn't hurt
     return await getMessages();
   } catch (error) {
     console.error("Error in fetchLatestMessagesAction:", error);
