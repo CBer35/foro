@@ -63,11 +63,9 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
       videoId = url.split('embed/')[1].split(/[?&]/)[0];
     } else if (url.includes('youtube.com/shorts/')) {
       videoId = url.split('shorts/')[1].split(/[?&]/)[0];
-       return `https://www.youtube.com/embed/${videoId}`;
     }
-    // For standard YouTube video URLs, just return the embed URL
-    // For other types, this might need more sophisticated parsing
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : url; // Fallback to original URL if ID not found
+    // Add parameters for a cleaner player
+    return videoId ? `https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0&controls=1` : url;
   };
   
   const isVimeoUrl = (url: string): boolean => {
@@ -78,9 +76,15 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
   const convertVimeoUrlToEmbed = (url: string): string => {
     const vimeoRegex = /vimeo\.com\/(\d+)/;
     const match = url.match(vimeoRegex);
-    return match ? `https://player.vimeo.com/video/${match[1]}` : url;
+    // Add parameters for a cleaner player
+    return match ? `https://player.vimeo.com/video/${match[1]}?byline=0&portrait=0&title=0&controls=1` : url;
   };
 
+  const videoSourceUrl = message.videoEmbedUrl && !isYouTubeUrl(message.videoEmbedUrl) && !isVimeoUrl(message.videoEmbedUrl)
+    ? message.videoEmbedUrl
+    : (message.fileUrl && message.fileType?.startsWith('video/'))
+    ? message.fileUrl
+    : null;
 
   return (
     <Card className="mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out">
@@ -98,69 +102,61 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
       <CardContent className="pb-3">
         <p className="whitespace-pre-wrap">{message.content}</p>
         
-        {/* Displaying video embed or attached file */}
-        {message.videoEmbedUrl ? (
-          <div className="mt-3 aspect-video max-w-full overflow-hidden rounded-md">
-            {isYouTubeUrl(message.videoEmbedUrl) ? (
-              <iframe
-                width="100%"
-                src={convertYouTubeUrlToEmbed(message.videoEmbedUrl)}
-                title="YouTube video player"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className="w-full h-full min-h-[300px]" 
-              ></iframe>
-            ) : isVimeoUrl(message.videoEmbedUrl) ? (
-              <iframe
-                src={convertVimeoUrlToEmbed(message.videoEmbedUrl)}
-                width="100%"
-                title="Vimeo video player"
-                frameBorder="0"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full min-h-[300px]"
-              ></iframe>
-            ) : ( // Assume direct video link for <video> tag
-              <video
-                src={message.videoEmbedUrl}
-                controls
-                controlsList="nodownload"
-                className="w-full rounded-md max-h-96"
-                preload="metadata"
-              />
-            )}
+        {message.videoEmbedUrl && isYouTubeUrl(message.videoEmbedUrl) ? (
+          <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+            <iframe
+              src={convertYouTubeUrlToEmbed(message.videoEmbedUrl)}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="w-full h-full" 
+            ></iframe>
           </div>
-        ) : message.fileUrl && message.fileType?.startsWith('video/') ? (
-          <div className="mt-3">
+        ) : message.videoEmbedUrl && isVimeoUrl(message.videoEmbedUrl) ? (
+          <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+            <iframe
+              src={convertVimeoUrlToEmbed(message.videoEmbedUrl)}
+              title="Vimeo video player"
+              frameBorder="0"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full"
+            ></iframe>
+          </div>
+        ) : videoSourceUrl ? (
+           <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
             <video
-              src={message.fileUrl}
+              src={videoSourceUrl}
               controls
               controlsList="nodownload"
-              className="w-full rounded-md max-h-96"
+              className="w-full h-full bg-black" // Added bg-black for letterboxing
               preload="metadata"
             />
           </div>
-        ) : message.fileUrl && message.fileName ? (
-          // Displaying other attached files (images, documents, etc.)
+        ) : message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
           <div className="mt-3 p-3 border rounded-md bg-secondary/30">
             <div className="flex items-center gap-2 mb-2">
               <Paperclip className="h-5 w-5 text-muted-foreground" />
               <span className="font-medium text-sm">{message.fileName}</span>
             </div>
-            {message.fileType?.startsWith('image/') ? (
-              <Image 
-                src={message.filePreview || message.fileUrl} 
-                alt={message.fileName} 
-                width={200} height={150} 
-                className="rounded-md object-cover max-h-48"
-                data-ai-hint="attached image"
-              />
-            ) : (
-              <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                Download {message.fileName}
-              </Link>
-            )}
+            <Image 
+              src={message.filePreview || message.fileUrl} 
+              alt={message.fileName} 
+              width={200} height={150} 
+              className="rounded-md object-cover max-h-48"
+              data-ai-hint="attached image"
+            />
+          </div>
+        ) : message.fileUrl && message.fileName ? (
+          <div className="mt-3 p-3 border rounded-md bg-secondary/30">
+             <div className="flex items-center gap-2 mb-2">
+              <Paperclip className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium text-sm">{message.fileName}</span>
+            </div>
+            <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Download {message.fileName}
+            </Link>
           </div>
         ) : null}
       </CardContent>
@@ -180,3 +176,4 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
     </Card>
   );
 }
+
