@@ -125,6 +125,7 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
               <video
                 src={message.videoEmbedUrl}
                 controls
+                controlsList="nodownload"
                 className="w-full rounded-md max-h-96"
                 preload="metadata"
               />
@@ -135,6 +136,7 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
             <video
               src={message.fileUrl}
               controls
+              controlsList="nodownload"
               className="w-full rounded-md max-h-96"
               preload="metadata"
             />
