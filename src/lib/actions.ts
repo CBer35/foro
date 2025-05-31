@@ -45,7 +45,7 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 1 week
     path: '/',
-    sameSite: 'Lax', // Explicitly set SameSite
+    sameSite: 'Lax',
   });
 
   redirect('/forum');
@@ -59,12 +59,8 @@ export async function createMessageAction(
   const nickname = cookieStore.get('nickname')?.value;
 
   if (!nickname) {
-    console.error("Authentication failed in createMessageAction: Nickname cookie not found or has no value.");
-    // console.log("All cookies received by createMessageAction:", cookieStore.getAll());
-    return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled. Check server logs for cookie details.' };
+    return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
-  // console.log("Nickname found in createMessageAction:", nickname);
-
 
   const content = formData.get('content') as string;
   const fileInput = formData.get('file') as File | null;
@@ -117,7 +113,7 @@ export async function createMessageAction(
 
     revalidatePath('/forum'); 
     if (parentId) {
-        revalidatePath(`/forum/message/${parentId}`); // Potentially revalidate a thread page if it exists
+        revalidatePath(`/forum/message/${parentId}`);
     }
     return { success: 'Message posted successfully!', message: newMessage };
 
@@ -148,10 +144,14 @@ export async function repostMessageAction(messageId: string): Promise<{ success?
 }
 
 export async function createPollAction(formData: FormData): Promise<{ success?: string; poll?: Poll; error?: string; }> {
-  const nickname = cookies().get('nickname')?.value;
-  if (!nickname) {
-    return { error: 'User not authenticated.' };
+  const cookieStore = cookies();
+  const isAdmin = cookieStore.get('admin-session')?.value === 'true';
+
+  if (!isAdmin) {
+    return { error: 'Only administrators can create polls.' };
   }
+
+  const nickname = "Admin"; // Polls created by admin will have "Admin" as nickname
   const question = formData.get('question') as string;
   const optionTexts = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
 
@@ -172,9 +172,10 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
     const newPoll = await addPoll(pollData);
 
     revalidatePath('/forum');
-    return { success: 'Poll created successfully!', poll: newPoll };
+    revalidatePath('/admin'); // Also revalidate admin if polls are listed there
+    return { success: 'Poll created successfully by Admin!', poll: newPoll };
   } catch (e) {
-    console.error('Error creating poll:', e);
+    console.error('Error creating poll by admin:', e);
     return { error: 'Failed to create poll.' };
   }
 }
@@ -182,7 +183,9 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
 export async function votePollAction(pollId: string, optionId: string): Promise<{ success?: string; updatedPoll?: Poll; error?: string; }> {
   const nickname = cookies().get('nickname')?.value;
   if (!nickname) {
-    return { error: 'User not authenticated.' };
+    // Allow anonymous voting or voting based on 'nickname' cookie if preferred
+    // For now, let's keep the check, but this could be removed if polls are fully public for voting
+    // return { error: 'User not authenticated to vote.' }; 
   }
 
   try {
@@ -202,13 +205,12 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().set('nickname', '', { maxAge: -1, path: '/', sameSite: 'Lax' }); // More robust way to delete
+  cookies().set('nickname', '', { maxAge: -1, path: '/', sameSite: 'Lax' });
   redirect('/');
 }
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    // Fetch only top-level messages for the main feed
     const allMessages = await getMessages();
     return allMessages.filter(msg => !msg.parentId);
   } catch (error) {
@@ -219,12 +221,60 @@ export async function fetchLatestMessagesAction(): Promise<Message[]> {
 
 export async function fetchRepliesAction(parentId: string): Promise<Message[]> {
   try {
-    const allMessages = await getMessages(); // This gets all messages, then we filter
+    const allMessages = await getMessages();
     const replies = allMessages.filter(msg => msg.parentId === parentId);
-    // Replies are typically shown oldest to newest within a thread
     return replies.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   } catch (error) {
     console.error("Error in fetchRepliesAction:", error);
     return [];
   }
+}
+
+// Admin Actions
+const adminCredentialsSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export async function adminLoginAction(prevState: any, formData: FormData) {
+  const validatedFields = adminCredentialsSchema.safeParse({
+    username: formData.get('username'),
+    password: formData.get('password'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      error: "Both username and password are required.",
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+
+  const { username, password } = validatedFields.data;
+
+  // Ensure ADMIN_USERNAME and ADMIN_PASSWORD are set in .env.local
+  const adminUser = process.env.ADMIN_USERNAME;
+  const adminPass = process.env.ADMIN_PASSWORD;
+
+  if (!adminUser || !adminPass) {
+    console.error("ADMIN_USERNAME or ADMIN_PASSWORD not set in environment variables.");
+    return { error: "Admin authentication is not configured on the server." };
+  }
+
+  if (username === adminUser && password === adminPass) {
+    cookies().set('admin-session', 'true', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24, // 1 day
+      path: '/',
+      sameSite: 'Lax',
+    });
+    redirect('/admin');
+  } else {
+    return { error: 'Invalid username or password.' };
+  }
+}
+
+export async function adminLogoutAction() {
+  cookies().set('admin-session', '', { maxAge: -1, path: '/', sameSite: 'Lax' });
+  redirect('/admin/login');
 }
