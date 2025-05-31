@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { Message, Poll } from '@/types';
 import MessageItem from './MessageItem';
 import MessageForm from './MessageForm';
@@ -11,87 +11,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card } from '@/components/ui/card';
 import { MessageSquare, ListChecks } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+// Firebase specific imports removed
+// import { db } from '@/lib/firebase';
+// import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 
 interface ForumClientContentProps {
   initialNickname: string;
+  initialMessages: Message[];
+  initialPolls: Poll[];
 }
 
-export default function ForumClientContent({ initialNickname }: ForumClientContentProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [polls, setPolls] = useState<Poll[]>([]);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
-  const [isLoadingPolls, setIsLoadingPolls] = useState(true);
+export default function ForumClientContent({ 
+  initialNickname, 
+  initialMessages, 
+  initialPolls 
+}: ForumClientContentProps) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [polls, setPolls] = useState<Poll[]>(initialPolls);
+  
+  // Loading states are less relevant now as initial data is passed as props.
+  // They could be used if we implement optimistic updates or client-side filtering/sorting later.
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false); // Set to false initially
+  const [isLoadingPolls, setIsLoadingPolls] = useState(false); // Set to false initially
 
-  // Fetch Messages from Firestore
+  // Update local state if props change (e.g., after revalidation and page reload)
   useEffect(() => {
-    setIsLoadingMessages(true);
-    const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedMessages: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedMessages.push({ 
-          ...data, 
-          id: doc.id, 
-          // Convert Firestore Timestamp to JS Date for client-side use
-          timestamp: (data.timestamp as Timestamp)?.toDate ? (data.timestamp as Timestamp).toDate() : new Date(data.timestamp) 
-        } as Message);
-      });
-      setMessages(fetchedMessages);
-      setIsLoadingMessages(false);
-    }, (error) => {
-      console.error("Error fetching messages: ", error);
-      setIsLoadingMessages(false);
-    });
+    setMessages(initialMessages);
+  }, [initialMessages]);
 
-    return () => unsubscribe(); // Unsubscribe when component unmounts
-  }, []);
-
-  // Fetch Polls from Firestore
   useEffect(() => {
-    setIsLoadingPolls(true);
-    const q = query(collection(db, 'polls'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedPolls: Poll[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedPolls.push({ 
-          ...data, 
-          id: doc.id, 
-          timestamp: (data.timestamp as Timestamp)?.toDate ? (data.timestamp as Timestamp).toDate() : new Date(data.timestamp)
-        } as Poll);
-      });
-      setPolls(fetchedPolls);
-      setIsLoadingPolls(false);
-    }, (error) => {
-      console.error("Error fetching polls: ", error);
-      setIsLoadingPolls(false);
-    });
-    
-    return () => unsubscribe(); // Unsubscribe when component unmounts
-  }, []);
+    setPolls(initialPolls);
+  }, [initialPolls]);
 
 
-  // Callbacks for forms will now rely on server actions to update Firestore,
-  // and onSnapshot will update the local state.
-  // So, optimistic updates here are less critical but can be kept for perceived speed.
-  // For simplicity, we'll remove direct client-side manipulation after form submission,
-  // as Firestore real-time updates will handle it.
-
+  // Callbacks are simplified as revalidatePath in server actions handles data refresh.
+  // Optimistic updates could be added here for a smoother UX if desired.
   const handleMessageCommitted = () => {
-    // No direct state update needed here if onSnapshot is working,
-    // but could re-trigger a fetch or rely on revalidatePath from server action if not real-time.
-    // For now, Firestore's onSnapshot should handle this.
+    // Form clears itself. Revalidation will update the list.
+    // To see immediate effect without waiting for revalidation, one could add optimistic update here.
   };
   
   const handleNewPoll = () => {
-    // Similar to messages, onSnapshot will update the state.
+    // Form clears itself. Revalidation will update the list.
   };
 
   const onInteractionSuccess = () => {
-    // General refresh/rely on onSnapshot
+    // Revalidation will update the list.
   };
 
 
@@ -103,10 +68,9 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
       </TabsList>
       
       <TabsContent value="messages">
-        {/* Pass initialNickname to MessageForm if it needs it for any client-side logic before action */}
         <MessageForm onMessageCommitted={handleMessageCommitted} />
         <h2 className="text-2xl font-headline mb-4">Recent Messages</h2>
-        {isLoadingMessages ? (
+        {isLoadingMessages ? ( // This might be removed or tied to a different logic
           Array.from({ length: 3 }).map((_, index) => (
             <Card key={index} className="mb-4 p-4">
               <div className="flex items-center space-x-3 mb-2">
@@ -134,7 +98,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
       <TabsContent value="polls">
         <PollForm onPollCreated={handleNewPoll} /> 
         <h2 className="text-2xl font-headline mb-4">Active Polls</h2>
-        {isLoadingPolls ? (
+        {isLoadingPolls ? ( // This might be removed or tied to a different logic
           Array.from({ length: 2 }).map((_, index) => (
              <Card key={index} className="mb-6 p-4">
               <Skeleton className="h-6 w-3/4 mb-2" />

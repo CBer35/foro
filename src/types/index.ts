@@ -1,11 +1,12 @@
 
-import type { Timestamp } from 'firebase/firestore';
+// No more Firebase Timestamp type
+// export type { Timestamp } from 'firebase/firestore';
 
 export interface Message {
   id: string;
   nickname: string;
   content: string;
-  timestamp: Timestamp | Date; // Firestore uses Timestamp, client might use Date
+  timestamp: string; // ISO 8601 date string
   filePreview?: string; 
   fileName?: string;
   fileType?: string;
@@ -23,6 +24,6 @@ export interface Poll {
   nickname: string;
   question: string;
   options: PollOption[];
-  timestamp: Timestamp | Date; // Firestore uses Timestamp, client might use Date
+  timestamp: string; // ISO 8601 date string
   totalVotes: number;
 }

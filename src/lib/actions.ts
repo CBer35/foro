@@ -5,9 +5,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { db } from '@/lib/firebase'; // Import Firestore instance
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, getDoc, runTransaction } from 'firebase/firestore';
-import type { Message, Poll, PollOption } from '@/types';
+import { addMessage, incrementMessageReposts, addPoll, voteOnPoll } from './file-store';
+import type { Message, Poll, PollOption } from '@/types'; // PollOption might not be directly used here now
 
 const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
@@ -40,8 +39,12 @@ export async function createMessageAction(formData: FormData) {
   const nickname = cookies().get('nickname')?.value;
 
   if (!nickname) {
+     console.error('CreateMessageAction: Nickname cookie not found. Cookies:', cookies().getAll());
     return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
+  // console.log('CreateMessageAction: Nickname found:', nickname);
+  // console.log('CreateMessageAction: All cookies:', cookies().getAll());
+
 
   const content = formData.get('content') as string;
   const file = formData.get('file') as File | null;
@@ -51,32 +54,23 @@ export async function createMessageAction(formData: FormData) {
   }
 
   try {
-    const messageData: Omit<Message, 'id' | 'timestamp'> = {
+    const messageData: Omit<Message, 'id' | 'timestamp' | 'reposts'> = {
       nickname,
       content,
-      reposts: 0,
+      // reposts will be initialized by addMessage
     };
 
     if (file && file.size > 0) {
-      // For now, we're just storing file metadata. Actual file upload to Firebase Storage would be a separate step.
       messageData.fileName = file.name;
       messageData.fileType = file.type;
-      // If it's an image, you might generate a preview Data URL on client and pass it,
-      // or handle preview generation after upload to storage.
-      // For simplicity, if you pass filePreview from client, it would be a string.
-      // This example assumes filePreview would be passed in formData if client generated it.
-      // Let's assume client handles preview and MessageForm sends 'filePreview' in FormData if it's an image.
        if (formData.has('filePreview')) {
          messageData.filePreview = formData.get('filePreview') as string;
        }
     }
     
-    await addDoc(collection(db, 'messages'), {
-      ...messageData,
-      timestamp: serverTimestamp(), // Use Firestore server timestamp
-    });
+    await addMessage(messageData);
 
-    revalidatePath('/forum'); // May not be strictly necessary with real-time listeners, but good for fallback
+    revalidatePath('/forum'); 
     return { success: 'Message posted successfully!' };
 
   } catch (e) {
@@ -92,10 +86,10 @@ export async function repostMessageAction(messageId: string) {
   }
 
   try {
-    const messageRef = doc(db, 'messages', messageId);
-    await updateDoc(messageRef, {
-      reposts: increment(1),
-    });
+    const updatedMessage = await incrementMessageReposts(messageId);
+    if (!updatedMessage) {
+      return { error: 'Message not found or failed to repost.'};
+    }
     revalidatePath('/forum');
     return { success: 'Message reposted!' };
   } catch (e) {
@@ -120,23 +114,13 @@ export async function createPollAction(formData: FormData) {
   }
   
   try {
-    const options: PollOption[] = optionTexts.map((text, index) => ({
-      id: `opt_${Date.now()}_${index}`, // Simple unique ID for option within the poll
-      text,
-      votes: 0,
-    }));
-
-    const pollData: Omit<Poll, 'id' | 'timestamp'> = {
+    const pollData = { // Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'options'> & { options: string[] }
       nickname,
       question,
-      options,
-      totalVotes: 0,
+      options: optionTexts,
     };
 
-    await addDoc(collection(db, 'polls'), {
-      ...pollData,
-      timestamp: serverTimestamp(),
-    });
+    await addPoll(pollData);
 
     revalidatePath('/forum');
     return { success: 'Poll created successfully!' };
@@ -153,36 +137,10 @@ export async function votePollAction(pollId: string, optionId: string) {
   }
 
   try {
-    const pollRef = doc(db, 'polls', pollId);
-    
-    // It's safer to use a transaction to read and then update poll options
-    await runTransaction(db, async (transaction) => {
-      const pollDoc = await transaction.get(pollRef);
-      if (!pollDoc.exists()) {
-        throw "Poll not found!";
-      }
-
-      const pollData = pollDoc.data() as Poll;
-      const optionIndex = pollData.options.findIndex(opt => opt.id === optionId);
-
-      if (optionIndex === -1) {
-        throw "Option not found!";
-      }
-
-      // Create a new options array with updated votes
-      const newOptions = pollData.options.map((opt, index) => {
-        if (index === optionIndex) {
-          return { ...opt, votes: opt.votes + 1 };
-        }
-        return opt;
-      });
-      
-      transaction.update(pollRef, { 
-        options: newOptions,
-        totalVotes: increment(1) 
-      });
-    });
-
+    const updatedPoll = await voteOnPoll(pollId, optionId);
+    if(!updatedPoll) {
+      return { error: 'Poll or option not found, or failed to vote.'};
+    }
     revalidatePath('/forum');
     return { success: 'Voted successfully!' };
   } catch (e) {
