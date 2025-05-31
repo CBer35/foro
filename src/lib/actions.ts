@@ -1,9 +1,13 @@
+
 'use server';
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { db } from '@/lib/firebase'; // Import Firestore instance
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, getDoc, runTransaction } from 'firebase/firestore';
+import type { Message, Poll, PollOption } from '@/types';
 
 const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
@@ -23,7 +27,7 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
   const { nickname } = validatedFields.data;
 
   cookies().set('nickname', nickname, {
-    httpOnly: true, // Recommended for security if not strictly needed client-side JS
+    httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 1 week
     path: '/',
@@ -33,18 +37,9 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
 }
 
 export async function createMessageAction(formData: FormData) {
-  console.log('--- Debug: Entering createMessageAction ---');
-  const allCookies = cookies().getAll();
-  console.log('Debug: All cookies available in createMessageAction:', JSON.stringify(allCookies, null, 2));
-
-  const nicknameCookie = cookies().get('nickname');
-  const nickname = nicknameCookie?.value;
-
-  console.log('Debug: Nickname cookie object retrieved:', JSON.stringify(nicknameCookie, null, 2));
-  console.log('Debug: Extracted nickname value:', nickname);
+  const nickname = cookies().get('nickname')?.value;
 
   if (!nickname) {
-    console.error('Authentication Error: Nickname cookie not found or value is missing in createMessageAction.');
     return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
 
@@ -55,15 +50,39 @@ export async function createMessageAction(formData: FormData) {
     return { error: 'Message content cannot be empty.' };
   }
 
-  console.log('New message from:', nickname);
-  console.log('Content:', content);
-  if (file && file.size > 0) {
-    console.log('File:', file.name, file.size, file.type);
-    // File handling logic would go here (e.g., upload to storage)
+  try {
+    const messageData: Omit<Message, 'id' | 'timestamp'> = {
+      nickname,
+      content,
+      reposts: 0,
+    };
+
+    if (file && file.size > 0) {
+      // For now, we're just storing file metadata. Actual file upload to Firebase Storage would be a separate step.
+      messageData.fileName = file.name;
+      messageData.fileType = file.type;
+      // If it's an image, you might generate a preview Data URL on client and pass it,
+      // or handle preview generation after upload to storage.
+      // For simplicity, if you pass filePreview from client, it would be a string.
+      // This example assumes filePreview would be passed in formData if client generated it.
+      // Let's assume client handles preview and MessageForm sends 'filePreview' in FormData if it's an image.
+       if (formData.has('filePreview')) {
+         messageData.filePreview = formData.get('filePreview') as string;
+       }
+    }
+    
+    await addDoc(collection(db, 'messages'), {
+      ...messageData,
+      timestamp: serverTimestamp(), // Use Firestore server timestamp
+    });
+
+    revalidatePath('/forum'); // May not be strictly necessary with real-time listeners, but good for fallback
+    return { success: 'Message posted successfully!' };
+
+  } catch (e) {
+    console.error('Error posting message:', e);
+    return { error: 'Failed to post message. Please try again.' };
   }
-  // Simulate successful creation
-  revalidatePath('/forum'); // To update the list on the client
-  return { success: 'Message posted successfully!' };
 }
 
 export async function repostMessageAction(messageId: string) {
@@ -71,10 +90,18 @@ export async function repostMessageAction(messageId: string) {
   if (!nickname) {
     return { error: 'User not authenticated.' };
   }
-  console.log('Message reposted:', messageId, 'by', nickname);
-  // Simulate successful repost
-  revalidatePath('/forum');
-  return { success: 'Message reposted!' };
+
+  try {
+    const messageRef = doc(db, 'messages', messageId);
+    await updateDoc(messageRef, {
+      reposts: increment(1),
+    });
+    revalidatePath('/forum');
+    return { success: 'Message reposted!' };
+  } catch (e) {
+    console.error('Error reposting message:', e);
+    return { error: 'Failed to repost message.' };
+  }
 }
 
 export async function createPollAction(formData: FormData) {
@@ -83,22 +110,40 @@ export async function createPollAction(formData: FormData) {
     return { error: 'User not authenticated.' };
   }
   const question = formData.get('question') as string;
-  const options = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
-
+  const optionTexts = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
 
   if (!question || question.trim().length === 0) {
     return { error: 'Poll question cannot be empty.' };
   }
-  if (options.length < 2) {
+  if (optionTexts.length < 2) {
     return { error: 'Poll must have at least two options.' };
   }
   
-  console.log('New poll from:', nickname);
-  console.log('Question:', question);
-  console.log('Options:', options);
-  // Simulate successful creation
-  revalidatePath('/forum');
-  return { success: 'Poll created successfully!' };
+  try {
+    const options: PollOption[] = optionTexts.map((text, index) => ({
+      id: `opt_${Date.now()}_${index}`, // Simple unique ID for option within the poll
+      text,
+      votes: 0,
+    }));
+
+    const pollData: Omit<Poll, 'id' | 'timestamp'> = {
+      nickname,
+      question,
+      options,
+      totalVotes: 0,
+    };
+
+    await addDoc(collection(db, 'polls'), {
+      ...pollData,
+      timestamp: serverTimestamp(),
+    });
+
+    revalidatePath('/forum');
+    return { success: 'Poll created successfully!' };
+  } catch (e) {
+    console.error('Error creating poll:', e);
+    return { error: 'Failed to create poll.' };
+  }
 }
 
 export async function votePollAction(pollId: string, optionId: string) {
@@ -106,10 +151,47 @@ export async function votePollAction(pollId: string, optionId: string) {
   if (!nickname) {
     return { error: 'User not authenticated.' };
   }
-  console.log('Vote cast for poll:', pollId, 'option:', optionId, 'by', nickname);
-  // Simulate successful vote
-  revalidatePath('/forum');
-  return { success: 'Voted successfully!' };
+
+  try {
+    const pollRef = doc(db, 'polls', pollId);
+    
+    // It's safer to use a transaction to read and then update poll options
+    await runTransaction(db, async (transaction) => {
+      const pollDoc = await transaction.get(pollRef);
+      if (!pollDoc.exists()) {
+        throw "Poll not found!";
+      }
+
+      const pollData = pollDoc.data() as Poll;
+      const optionIndex = pollData.options.findIndex(opt => opt.id === optionId);
+
+      if (optionIndex === -1) {
+        throw "Option not found!";
+      }
+
+      // Create a new options array with updated votes
+      const newOptions = pollData.options.map((opt, index) => {
+        if (index === optionIndex) {
+          return { ...opt, votes: opt.votes + 1 };
+        }
+        return opt;
+      });
+      
+      transaction.update(pollRef, { 
+        options: newOptions,
+        totalVotes: increment(1) 
+      });
+    });
+
+    revalidatePath('/forum');
+    return { success: 'Voted successfully!' };
+  } catch (e) {
+    console.error('Error voting on poll:', e);
+    if (typeof e === 'string') {
+      return { error: e };
+    }
+    return { error: 'Failed to vote on poll.' };
+  }
 }
 
 export async function handleSignOut() {

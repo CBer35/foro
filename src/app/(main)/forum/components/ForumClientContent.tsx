@@ -11,26 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card } from '@/components/ui/card';
 import { MessageSquare, ListChecks } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 
 interface ForumClientContentProps {
   initialNickname: string;
 }
-
-// Mock data fetching functions
-const fetchMessages = async (): Promise<Message[]> => {
-  await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay for faster refresh perception
-  const storedMessages = localStorage.getItem('forumMessages');
-  if (storedMessages) return JSON.parse(storedMessages).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)}));
-  return []; // Return empty array if nothing in localStorage
-};
-
-const fetchPolls = async (): Promise<Poll[]> => {
-  await new Promise(resolve => setTimeout(resolve, 100));
-  const storedPolls = localStorage.getItem('forumPolls');
-  if (storedPolls) return JSON.parse(storedPolls).map((p: Poll) => ({...p, timestamp: new Date(p.timestamp)}));
-  return []; // Return empty array if nothing in localStorage
-};
-
 
 export default function ForumClientContent({ initialNickname }: ForumClientContentProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,72 +24,76 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isLoadingPolls, setIsLoadingPolls] = useState(true);
 
-  const loadMessages = useCallback(async () => {
+  // Fetch Messages from Firestore
+  useEffect(() => {
     setIsLoadingMessages(true);
-    const fetchedMessages = await fetchMessages();
-    fetchedMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setMessages(fetchedMessages);
-    setIsLoadingMessages(false);
+    const q = query(collection(db, 'messages'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedMessages: Message[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        fetchedMessages.push({ 
+          ...data, 
+          id: doc.id, 
+          // Convert Firestore Timestamp to JS Date for client-side use
+          timestamp: (data.timestamp as Timestamp)?.toDate ? (data.timestamp as Timestamp).toDate() : new Date(data.timestamp) 
+        } as Message);
+      });
+      setMessages(fetchedMessages);
+      setIsLoadingMessages(false);
+    }, (error) => {
+      console.error("Error fetching messages: ", error);
+      setIsLoadingMessages(false);
+    });
+
+    return () => unsubscribe(); // Unsubscribe when component unmounts
   }, []);
 
-  const loadPolls = useCallback(async () => {
+  // Fetch Polls from Firestore
+  useEffect(() => {
     setIsLoadingPolls(true);
-    const fetchedPolls = await fetchPolls();
-    fetchedPolls.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    setPolls(fetchedPolls);
-    setIsLoadingPolls(false);
+    const q = query(collection(db, 'polls'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedPolls: Poll[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        fetchedPolls.push({ 
+          ...data, 
+          id: doc.id, 
+          timestamp: (data.timestamp as Timestamp)?.toDate ? (data.timestamp as Timestamp).toDate() : new Date(data.timestamp)
+        } as Poll);
+      });
+      setPolls(fetchedPolls);
+      setIsLoadingPolls(false);
+    }, (error) => {
+      console.error("Error fetching polls: ", error);
+      setIsLoadingPolls(false);
+    });
+    
+    return () => unsubscribe(); // Unsubscribe when component unmounts
   }, []);
 
-  useEffect(() => {
-    loadMessages();
-    loadPolls();
-  }, [loadMessages, loadPolls]);
 
-  useEffect(() => {
-    if (!isLoadingMessages && (messages.length > 0 || localStorage.getItem('forumMessages'))) {
-        localStorage.setItem('forumMessages', JSON.stringify(messages));
-    }
-  }, [messages, isLoadingMessages]);
+  // Callbacks for forms will now rely on server actions to update Firestore,
+  // and onSnapshot will update the local state.
+  // So, optimistic updates here are less critical but can be kept for perceived speed.
+  // For simplicity, we'll remove direct client-side manipulation after form submission,
+  // as Firestore real-time updates will handle it.
 
-  useEffect(() => {
-     if (!isLoadingPolls && (polls.length > 0 || localStorage.getItem('forumPolls'))) {
-        localStorage.setItem('forumPolls', JSON.stringify(polls));
-     }
-  }, [polls, isLoadingPolls]);
-
-  const handleMessageCommitted = (newMessageData: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'>) => {
-    const newMessage: Message = {
-      ...newMessageData,
-      nickname: initialNickname, // Use nickname from ForumPage props
-      id: String(Date.now() + Math.random()), 
-      timestamp: new Date(),
-      reposts: 0,
-    };
-    // Optimistically update the messages state
-    setMessages(prevMessages => [newMessage, ...prevMessages].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-    // The useEffect for 'messages' will handle saving to localStorage.
+  const handleMessageCommitted = () => {
+    // No direct state update needed here if onSnapshot is working,
+    // but could re-trigger a fetch or rely on revalidatePath from server action if not real-time.
+    // For now, Firestore's onSnapshot should handle this.
   };
   
-  const handleNewPoll = (newPollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'>) => {
-    const newPoll: Poll = {
-      ...newPollData,
-      nickname: initialNickname,
-      id: String(Date.now() + Math.random()),
-      timestamp: new Date(),
-      totalVotes: newPollData.options.reduce((sum, opt) => sum + opt.votes, 0),
-    };
-    setPolls(prevPolls => [newPoll, ...prevPolls].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  const handleNewPoll = () => {
+    // Similar to messages, onSnapshot will update the state.
   };
 
-  // Called after a repost action is successful to refresh the message list
-  const onMessageReposted = () => {
-    loadMessages(); 
+  const onInteractionSuccess = () => {
+    // General refresh/rely on onSnapshot
   };
 
-  // Called after a poll is created or voted to refresh the poll list
-  const onPollInteractionSuccess = () => {
-    loadPolls();
-  };
 
   return (
     <Tabs defaultValue="messages" className="w-full">
@@ -113,9 +103,10 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
       </TabsList>
       
       <TabsContent value="messages">
+        {/* Pass initialNickname to MessageForm if it needs it for any client-side logic before action */}
         <MessageForm onMessageCommitted={handleMessageCommitted} />
         <h2 className="text-2xl font-headline mb-4">Recent Messages</h2>
-        {isLoadingMessages && messages.length === 0 ? ( // Show skeleton only on initial load or if empty
+        {isLoadingMessages ? (
           Array.from({ length: 3 }).map((_, index) => (
             <Card key={index} className="mb-4 p-4">
               <div className="flex items-center space-x-3 mb-2">
@@ -134,7 +125,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
         ) : (
           <div className="space-y-4">
             {messages.map((msg) => (
-              <MessageItem key={msg.id} message={msg} currentNickname={initialNickname} onRepostSuccess={onMessageReposted} />
+              <MessageItem key={msg.id} message={msg} currentNickname={initialNickname} onRepostSuccess={onInteractionSuccess} />
             ))}
           </div>
         )}
@@ -143,7 +134,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
       <TabsContent value="polls">
         <PollForm onPollCreated={handleNewPoll} /> 
         <h2 className="text-2xl font-headline mb-4">Active Polls</h2>
-        {isLoadingPolls && polls.length === 0 ? ( // Show skeleton only on initial load or if empty
+        {isLoadingPolls ? (
           Array.from({ length: 2 }).map((_, index) => (
              <Card key={index} className="mb-6 p-4">
               <Skeleton className="h-6 w-3/4 mb-2" />
@@ -159,7 +150,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
         ) : (
           <div className="space-y-6">
             {polls.map((poll) => (
-              <PollItem key={poll.id} poll={poll} currentNickname={initialNickname} onPollVoted={onPollInteractionSuccess} />
+              <PollItem key={poll.id} poll={poll} currentNickname={initialNickname} onPollVoted={onInteractionSuccess} />
             ))}
           </div>
         )}

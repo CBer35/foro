@@ -3,8 +3,7 @@
 
 import type { ChangeEvent } from 'react';
 import { useState, useRef } from 'react';
-import type { useFormStatus } from 'react-dom'; // Corrected: Keep type import
-import { useFormStatus as useFormStatusActual } from 'react-dom'; // Use actual hook
+import { useFormStatus as useFormStatusActual } from 'react-dom';
 import { createMessageAction } from '@/lib/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -12,15 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Send, Paperclip, Image as ImageIcon, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
-import type { Message } from '@/types';
+// Removed Message type import as it's no longer constructing the object client-side for the callback
 
 interface MessageFormProps {
-  // Callback with client-side constructed message data after server action success
-  onMessageCommitted: (messageData: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'>) => void;
+  onMessageCommitted: () => void; // Simplified callback
 }
 
 function SubmitButton() {
-  const { pending } = useFormStatusActual(); // Use actual hook
+  const { pending } = useFormStatusActual();
   return (
     <Button type="submit" disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Posting...' : <><Send className="mr-2 h-4 w-4" /> Post Message</>}
@@ -43,7 +41,7 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
         toast({ title: "File too large", description: "Please select a file smaller than 5MB.", variant: "destructive"});
         setFile(null);
         setFilePreview(null);
-        if(fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if(fileInputRef.current) fileInputRef.current.value = ""; 
         return;
       }
       setFile(selectedFile);
@@ -54,7 +52,7 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
         };
         reader.readAsDataURL(selectedFile);
       } else {
-        setFilePreview(null); // No preview for non-image files
+        setFilePreview(null); 
       }
     } else {
       setFile(null);
@@ -66,28 +64,20 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
     setFile(null);
     setFilePreview(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset the file input
+      fileInputRef.current.value = ""; 
     }
   };
 
   const handleSubmit = async (formData: FormData) => {
-    // content from formData will be used by server action.
-    // We use client-side state (content, file, filePreview) to construct the object for onMessageCommitted.
-    const clientContent = content;
-    const clientFile = file;
-    const clientFilePreview = filePreview;
+    // If there's a file preview (image), add it to formData so server action can access it
+    if (filePreview && file?.type.startsWith('image/')) {
+        formData.append('filePreview', filePreview);
+    }
 
     const result = await createMessageAction(formData);
     if (result?.success) {
       toast({ title: "Success", description: result.success });
-
-      const messageDataForClient: Omit<Message, 'id' | 'reposts' | 'timestamp' | 'nickname'> = {
-        content: clientContent,
-        filePreview: clientFilePreview,
-        fileName: clientFile?.name,
-        fileType: clientFile?.type,
-      };
-      onMessageCommitted(messageDataForClient);
+      onMessageCommitted(); // Call the simplified callback
 
       setContent('');
       setFile(null);
@@ -119,7 +109,7 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
           </Button>
           <Input
             type="file"
-            name="file" // Name attribute for server action to pick up the file
+            name="file"
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"

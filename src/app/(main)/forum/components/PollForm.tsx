@@ -2,23 +2,21 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { useFormStatus } from 'react-dom'; // Corrected: Keep type import
-import { useFormStatus as useFormStatusActual } from 'react-dom'; // Use actual hook
+import { useFormStatus as useFormStatusActual } from 'react-dom';
 import { createPollAction } from '@/lib/actions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Trash2, ListPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Poll, PollOption } from '@/types'; // Import Poll and PollOption
+// Removed Poll, PollOption type imports as client-side construction for callback is removed
 
 interface PollFormProps {
-  // Callback with client-side constructed poll data
-  onPollCreated: (pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'>) => void;
+  onPollCreated: () => void; // Simplified callback
 }
 
 function SubmitButton() {
-  const { pending } = useFormStatusActual(); // Use actual hook
+  const { pending } = useFormStatusActual();
   return (
     <Button type="submit" disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Creating Poll...' : <><ListPlus className="mr-2 h-4 w-4" /> Create Poll</>}
@@ -28,7 +26,7 @@ function SubmitButton() {
 
 export default function PollForm({ onPollCreated }: PollFormProps) {
   const [question, setQuestion] = useState('');
-  const [options, setOptions] = useState<string[]>(['', '']); // Start with two empty options
+  const [options, setOptions] = useState<string[]>(['', '']);
   const formRef = useRef<HTMLFormElement>(null);
   const { toast } = useToast();
 
@@ -39,7 +37,7 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
   };
 
   const addOption = () => {
-    if (options.length < 10) { // Max 10 options
+    if (options.length < 10) { 
       setOptions([...options, '']);
     } else {
       toast({ title: "Limit Reached", description: "Maximum of 10 options allowed.", variant: "destructive" });
@@ -47,7 +45,7 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
   };
 
   const removeOption = (index: number) => {
-    if (options.length > 2) { // Min 2 options
+    if (options.length > 2) { 
       const newOptions = options.filter((_, i) => i !== index);
       setOptions(newOptions);
     } else {
@@ -56,7 +54,6 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
   };
 
   const handleSubmit = async (formData: FormData) => {
-    // Client-side validation before calling server action
     const pollQuestion = formData.get('question') as string;
     const pollOptionsFromForm = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
 
@@ -69,22 +66,11 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
       return;
     }
     
-    // Server action is primarily for backend processing / revalidation
     const result = await createPollAction(formData); 
 
     if (result?.success) {
       toast({ title: "Success", description: result.success });
-      
-      // Construct poll data for client-side state update
-      const newPollClientData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'> = {
-        question: pollQuestion,
-        options: pollOptionsFromForm.map((optText, idx) => ({
-          id: `opt-${Date.now()}-${idx}`, // Simple unique ID for option
-          text: optText,
-          votes: 0,
-        })),
-      };
-      onPollCreated(newPollClientData); // Pass client-side constructed data
+      onPollCreated(); // Call simplified callback
 
       setQuestion('');
       setOptions(['', '']);
@@ -113,7 +99,7 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
         {options.map((option, index) => (
           <div key={index} className="flex items-center gap-2">
             <Input
-              name="options[]" // Use array notation for multiple options
+              name="options[]" 
               placeholder={`Option ${index + 1}`}
               value={option}
               onChange={(e) => handleOptionChange(index, e.target.value)}
@@ -136,3 +122,4 @@ export default function PollForm({ onPollCreated }: PollFormProps) {
     </form>
   );
 }
+

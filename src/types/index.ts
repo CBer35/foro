@@ -1,16 +1,19 @@
+
+import type { Timestamp } from 'firebase/firestore';
+
 export interface Message {
   id: string;
   nickname: string;
   content: string;
-  timestamp: Date;
-  filePreview?: string; // URL or data URI for image preview, or filename for others
+  timestamp: Timestamp | Date; // Firestore uses Timestamp, client might use Date
+  filePreview?: string; 
   fileName?: string;
   fileType?: string;
   reposts: number;
 }
 
 export interface PollOption {
-  id: string;
+  id: string; 
   text: string;
   votes: number;
 }
@@ -20,6 +23,6 @@ export interface Poll {
   nickname: string;
   question: string;
   options: PollOption[];
-  timestamp: Date;
+  timestamp: Timestamp | Date; // Firestore uses Timestamp, client might use Date
   totalVotes: number;
 }
