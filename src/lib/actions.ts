@@ -32,14 +32,22 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
   redirect('/forum');
 }
 
-// Placeholder actions for messages and polls
-// In a real app, these would interact with a database.
-
 export async function createMessageAction(formData: FormData) {
-  const nickname = cookies().get('nickname')?.value;
+  console.log('--- Debug: Entering createMessageAction ---');
+  const allCookies = cookies().getAll();
+  console.log('Debug: All cookies available in createMessageAction:', JSON.stringify(allCookies, null, 2));
+
+  const nicknameCookie = cookies().get('nickname');
+  const nickname = nicknameCookie?.value;
+
+  console.log('Debug: Nickname cookie object retrieved:', JSON.stringify(nicknameCookie, null, 2));
+  console.log('Debug: Extracted nickname value:', nickname);
+
   if (!nickname) {
-    return { error: 'User not authenticated.' };
+    console.error('Authentication Error: Nickname cookie not found or value is missing in createMessageAction.');
+    return { error: 'User not authenticated. Please ensure you are properly logged in and cookies are enabled.' };
   }
+
   const content = formData.get('content') as string;
   const file = formData.get('file') as File | null;
 
