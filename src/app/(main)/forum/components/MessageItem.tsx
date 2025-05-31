@@ -108,57 +108,53 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
       <CardContent className="pb-3">
         <p className="whitespace-pre-wrap">{message.content}</p>
         
-        {videoToEmbed && !showVideoPlayer && (
-          <div 
-            className="mt-3 p-4 border rounded-lg bg-secondary/20 hover:bg-secondary/40 cursor-pointer flex items-center justify-center flex-col aspect-video w-full"
-            onClick={() => setShowVideoPlayer(true)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
-            aria-label="Reproducir video"
-          >
-            <PlayCircle className="h-12 w-12 text-primary mb-1" /> {/* Adjusted icon size and margin */}
-            <p className="text-xs font-medium text-primary">Video incrustado [ver]</p> {/* Adjusted text size */}
+        {videoToEmbed && (
+          <div className="mt-3 max-w-md mx-auto"> {/* Controla el tamaño máximo y centra el video */}
+            {!showVideoPlayer ? (
+              <div 
+                className="aspect-video p-4 border rounded-lg bg-secondary/20 hover:bg-secondary/40 cursor-pointer flex items-center justify-center flex-col shadow-sm"
+                onClick={() => setShowVideoPlayer(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
+                aria-label="Reproducir video"
+              >
+                <PlayCircle className="h-12 w-12 text-primary mb-1" />
+                <p className="text-xs font-medium text-primary">Video incrustado [ver]</p>
+              </div>
+            ) : (
+              <div className="aspect-video overflow-hidden rounded-lg shadow-sm"> {/* Contenedor común para el reproductor */}
+                {isYouTubeUrl(message.videoEmbedUrl || '') ? (
+                  <iframe
+                    src={convertYouTubeUrlToEmbed(message.videoEmbedUrl!)}
+                    title="YouTube video player"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    className="w-full h-full" 
+                  ></iframe>
+                ) : isVimeoUrl(message.videoEmbedUrl || '') ? (
+                  <iframe
+                    src={convertVimeoUrlToEmbed(message.videoEmbedUrl!)}
+                    title="Vimeo video player"
+                    frameBorder="0"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                  ></iframe>
+                ) : directVideoLink || uploadedVideoFile ? (
+                  <video
+                    src={directVideoLink || uploadedVideoFile!}
+                    controls
+                    controlsList="nodownload"
+                    className="w-full h-full bg-black"
+                    preload="metadata"
+                    autoPlay 
+                  />
+                ) : null}
+              </div>
+            )}
           </div>
-        )}
-
-        {videoToEmbed && showVideoPlayer && (
-          <>
-            {isYouTubeUrl(message.videoEmbedUrl || '') ? (
-              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
-                <iframe
-                  src={convertYouTubeUrlToEmbed(message.videoEmbedUrl!)}
-                  title="YouTube video player"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  className="w-full h-full" 
-                ></iframe>
-              </div>
-            ) : isVimeoUrl(message.videoEmbedUrl || '') ? (
-              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
-                <iframe
-                  src={convertVimeoUrlToEmbed(message.videoEmbedUrl!)}
-                  title="Vimeo video player"
-                  frameBorder="0"
-                  allow="autoplay; fullscreen; picture-in-picture"
-                  allowFullScreen
-                  className="w-full h-full"
-                ></iframe>
-              </div>
-            ) : directVideoLink || uploadedVideoFile ? (
-              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm bg-black">
-                <video
-                  src={directVideoLink || uploadedVideoFile!}
-                  controls
-                  controlsList="nodownload"
-                  className="w-full h-full"
-                  preload="metadata"
-                  autoPlay // Add autoPlay when shown
-                />
-              </div>
-            ) : null}
-          </>
         )}
 
         {!videoToEmbed && message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
@@ -203,3 +199,4 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
     </Card>
   );
 }
+
