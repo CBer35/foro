@@ -1,11 +1,12 @@
 
 'use client';
 
+import { useState } from 'react';
 import type { Message } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Repeat, Paperclip, MessageSquareReply, MessagesSquare } from 'lucide-react';
+import { Repeat, Paperclip, MessageSquareReply, MessagesSquare, PlayCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +21,7 @@ interface MessageItemProps {
 
 export default function MessageItem({ message, currentNickname, onMessageUpdated }: MessageItemProps) {
   const { toast } = useToast();
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
 
   const handleRepost = async () => {
     const result = await repostMessageAction(message.id);
@@ -49,6 +51,7 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
   };
 
   const isYouTubeUrl = (url: string): boolean => {
+    if (!url) return false;
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
     return youtubeRegex.test(url);
   };
@@ -64,11 +67,11 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
     } else if (url.includes('youtube.com/shorts/')) {
       videoId = url.split('shorts/')[1].split(/[?&]/)[0];
     }
-    // Add parameters for a cleaner player
-    return videoId ? `https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0&controls=1` : url;
+    return videoId ? `https://www.youtube.com/embed/${videoId}?modestbranding=1&rel=0&controls=1&autoplay=1` : url;
   };
   
   const isVimeoUrl = (url: string): boolean => {
+    if (!url) return false;
     const vimeoRegex = /^(https?:\/\/)?(www\.)?(vimeo\.com)\/(.+)/;
     return vimeoRegex.test(url);
   };
@@ -76,15 +79,18 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
   const convertVimeoUrlToEmbed = (url: string): string => {
     const vimeoRegex = /vimeo\.com\/(\d+)/;
     const match = url.match(vimeoRegex);
-    // Add parameters for a cleaner player
-    return match ? `https://player.vimeo.com/video/${match[1]}?byline=0&portrait=0&title=0&controls=1` : url;
+    return match ? `https://player.vimeo.com/video/${match[1]}?byline=0&portrait=0&title=0&controls=1&autoplay=1` : url;
   };
 
-  const videoSourceUrl = message.videoEmbedUrl && !isYouTubeUrl(message.videoEmbedUrl) && !isVimeoUrl(message.videoEmbedUrl)
+  const directVideoLink = message.videoEmbedUrl && !isYouTubeUrl(message.videoEmbedUrl) && !isVimeoUrl(message.videoEmbedUrl)
     ? message.videoEmbedUrl
-    : (message.fileUrl && message.fileType?.startsWith('video/'))
+    : null;
+
+  const uploadedVideoFile = (message.fileUrl && message.fileType?.startsWith('video/'))
     ? message.fileUrl
     : null;
+  
+  const videoToEmbed = isYouTubeUrl(message.videoEmbedUrl || '') || isVimeoUrl(message.videoEmbedUrl || '') || directVideoLink || uploadedVideoFile;
 
   return (
     <Card className="mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out">
@@ -102,39 +108,60 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
       <CardContent className="pb-3">
         <p className="whitespace-pre-wrap">{message.content}</p>
         
-        {message.videoEmbedUrl && isYouTubeUrl(message.videoEmbedUrl) ? (
-          <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
-            <iframe
-              src={convertYouTubeUrlToEmbed(message.videoEmbedUrl)}
-              title="YouTube video player"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              className="w-full h-full" 
-            ></iframe>
+        {videoToEmbed && !showVideoPlayer && (
+          <div 
+            className="mt-3 p-4 border rounded-lg bg-secondary/20 hover:bg-secondary/40 cursor-pointer flex items-center justify-center flex-col aspect-video w-full"
+            onClick={() => setShowVideoPlayer(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
+            aria-label="Reproducir video"
+          >
+            <PlayCircle className="h-16 w-16 text-primary mb-2" />
+            <p className="text-sm font-medium text-primary">Video incrustado [ver]</p>
           </div>
-        ) : message.videoEmbedUrl && isVimeoUrl(message.videoEmbedUrl) ? (
-          <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
-            <iframe
-              src={convertVimeoUrlToEmbed(message.videoEmbedUrl)}
-              title="Vimeo video player"
-              frameBorder="0"
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-              className="w-full h-full"
-            ></iframe>
-          </div>
-        ) : videoSourceUrl ? (
-           <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
-            <video
-              src={videoSourceUrl}
-              controls
-              controlsList="nodownload"
-              className="w-full h-full bg-black" // Added bg-black for letterboxing
-              preload="metadata"
-            />
-          </div>
-        ) : message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
+        )}
+
+        {videoToEmbed && showVideoPlayer && (
+          <>
+            {isYouTubeUrl(message.videoEmbedUrl || '') ? (
+              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+                <iframe
+                  src={convertYouTubeUrlToEmbed(message.videoEmbedUrl!)}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  className="w-full h-full" 
+                ></iframe>
+              </div>
+            ) : isVimeoUrl(message.videoEmbedUrl || '') ? (
+              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+                <iframe
+                  src={convertVimeoUrlToEmbed(message.videoEmbedUrl!)}
+                  title="Vimeo video player"
+                  frameBorder="0"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                ></iframe>
+              </div>
+            ) : directVideoLink || uploadedVideoFile ? (
+              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+                <video
+                  src={directVideoLink || uploadedVideoFile!}
+                  controls
+                  controlsList="nodownload"
+                  className="w-full h-full bg-black"
+                  preload="metadata"
+                  autoPlay // Add autoPlay when shown
+                />
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {!videoToEmbed && message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
           <div className="mt-3 p-3 border rounded-md bg-secondary/30">
             <div className="flex items-center gap-2 mb-2">
               <Paperclip className="h-5 w-5 text-muted-foreground" />
@@ -148,7 +175,7 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
               data-ai-hint="attached image"
             />
           </div>
-        ) : message.fileUrl && message.fileName ? (
+        ) : !videoToEmbed && message.fileUrl && message.fileName ? (
           <div className="mt-3 p-3 border rounded-md bg-secondary/30">
              <div className="flex items-center gap-2 mb-2">
               <Paperclip className="h-5 w-5 text-muted-foreground" />
@@ -176,4 +203,3 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
     </Card>
   );
 }
-
