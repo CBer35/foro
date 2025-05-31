@@ -117,8 +117,8 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
             aria-label="Reproducir video"
           >
-            <PlayCircle className="h-16 w-16 text-primary mb-2" />
-            <p className="text-sm font-medium text-primary">Video incrustado [ver]</p>
+            <PlayCircle className="h-12 w-12 text-primary mb-1" /> {/* Adjusted icon size and margin */}
+            <p className="text-xs font-medium text-primary">Video incrustado [ver]</p> {/* Adjusted text size */}
           </div>
         )}
 
@@ -147,12 +147,12 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
                 ></iframe>
               </div>
             ) : directVideoLink || uploadedVideoFile ? (
-              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm">
+              <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg shadow-sm bg-black">
                 <video
                   src={directVideoLink || uploadedVideoFile!}
                   controls
                   controlsList="nodownload"
-                  className="w-full h-full bg-black"
+                  className="w-full h-full"
                   preload="metadata"
                   autoPlay // Add autoPlay when shown
                 />
