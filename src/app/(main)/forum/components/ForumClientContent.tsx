@@ -21,19 +21,14 @@ const fetchMessages = async (): Promise<Message[]> => {
   await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay for faster refresh perception
   const storedMessages = localStorage.getItem('forumMessages');
   if (storedMessages) return JSON.parse(storedMessages).map((m: Message) => ({...m, timestamp: new Date(m.timestamp)}));
-  return [
-    { id: '1', nickname: 'Alice', content: 'Hello AnonymChat!', timestamp: new Date(Date.now() - 1000 * 60 * 5), reposts: 2, filePreview: 'https://placehold.co/200x150.png', fileName: 'landscape.png', fileType: 'image/png' },
-    { id: '2', nickname: 'Bob', content: 'This is a cool anonymous forum.', timestamp: new Date(Date.now() - 1000 * 60 * 2), reposts: 0 },
-  ];
+  return []; // Return empty array if nothing in localStorage
 };
 
 const fetchPolls = async (): Promise<Poll[]> => {
   await new Promise(resolve => setTimeout(resolve, 100));
   const storedPolls = localStorage.getItem('forumPolls');
   if (storedPolls) return JSON.parse(storedPolls).map((p: Poll) => ({...p, timestamp: new Date(p.timestamp)}));
-  return [
-    { id: 'p1', nickname: 'Charlie', question: 'Favorite Season?', options: [{id: 'o1', text: 'Spring', votes: 5}, {id: 'o2', text: 'Summer', votes: 10}, {id: 'o3', text: 'Autumn', votes: 7}, {id: 'o4', text: 'Winter', votes: 3}], timestamp: new Date(Date.now() - 1000 * 60 * 10), totalVotes: 25 },
-  ];
+  return []; // Return empty array if nothing in localStorage
 };
 
 
@@ -89,7 +84,7 @@ export default function ForumClientContent({ initialNickname }: ForumClientConte
     // The useEffect for 'messages' will handle saving to localStorage.
   };
   
-  const handleNewPoll = (newPollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes'>) => {
+  const handleNewPoll = (newPollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'nickname'>) => {
     const newPoll: Poll = {
       ...newPollData,
       nickname: initialNickname,
