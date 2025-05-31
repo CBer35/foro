@@ -55,20 +55,21 @@ export async function getMessages(): Promise<Message[]> {
 export async function addMessage(
   messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
 ): Promise<Message> {
-  const messages = await getMessages(); // Read current messages first, correctly awaiting
+  const messages = await getMessages();
 
   const newMessage: Message = {
     nickname: messageDetails.nickname,
     content: messageDetails.content,
-    filePreview: messageDetails.filePreview, // Client-generated preview for images
+    filePreview: messageDetails.filePreview,
     fileName: messageDetails.fileName,
     fileType: messageDetails.fileType,
-    fileUrl: messageDetails.fileUrl, // URL of the file on server
+    fileUrl: messageDetails.fileUrl,
+    videoEmbedUrl: messageDetails.videoEmbedUrl, // Added videoEmbedUrl
     parentId: messageDetails.parentId,
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
-    replyCount: messageDetails.replyCount || 0, // Initialize replyCount
+    replyCount: messageDetails.replyCount || 0,
   };
 
   messages.unshift(newMessage);
@@ -87,7 +88,7 @@ export async function addMessage(
 }
 
 export async function incrementMessageReposts(messageId: string): Promise<Message | null> {
-  let messages = await getMessages(); // Correctly awaiting
+  let messages = await getMessages();
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
     messages[messageIndex].reposts = (messages[messageIndex].reposts || 0) + 1;

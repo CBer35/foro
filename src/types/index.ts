@@ -11,6 +11,7 @@ export interface Message {
   fileName?: string;
   fileType?: string;
   fileUrl?: string; // URL to the file stored on the server
+  videoEmbedUrl?: string; // URL for an externally hosted video to embed
   parentId?: string;
   reposts: number;
   replyCount?: number;
@@ -30,3 +31,4 @@ export interface Poll {
   timestamp: string; // ISO 8601 date string
   totalVotes: number;
 }
+

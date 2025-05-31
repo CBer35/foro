@@ -14,7 +14,6 @@ const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
 });
 
-// Ensure the uploads directory exists
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
 const ensureUploadsDirExists = async () => {
   try {
@@ -46,7 +45,7 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 1 week
     path: '/',
-    sameSite: 'Lax', // Explicitly set SameSite
+    sameSite: 'Lax',
   });
 
   redirect('/forum');
@@ -54,16 +53,10 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
 
 export async function createMessageAction(
   formData: FormData,
-  parentId?: string // Optional parentId for replies
+  parentId?: string
 ): Promise<{ success?: string; message?: Message; error?: string; errors?: any; }> {
   const cookieStore = cookies();
-
-  // Diagnostic logging
-  console.log("All cookies in createMessageAction:", cookieStore.getAll());
-  const nicknameCookie = cookieStore.get('nickname');
-  console.log("Nickname cookie details in createMessageAction:", nicknameCookie);
-  
-  const nickname = nicknameCookie?.value;
+  const nickname = cookieStore.get('nickname')?.value;
 
   if (!nickname) {
     console.error("Authentication failed in createMessageAction: Nickname cookie not found or has no value.");
@@ -72,7 +65,8 @@ export async function createMessageAction(
 
   const content = formData.get('content') as string;
   const fileInput = formData.get('file') as File | null;
-  const clientFilePreview = formData.get('filePreview') as string | null;
+  const clientFilePreview = formData.get('filePreview') as string | null; // For images
+  const videoEmbedUrl = formData.get('videoEmbedUrl') as string | null;
 
   if (!content || content.trim().length === 0) {
     return { error: 'Message content cannot be empty.' };
@@ -90,7 +84,16 @@ export async function createMessageAction(
       messageDetails.parentId = parentId;
     }
 
-    if (fileInput && fileInput.size > 0) {
+    if (videoEmbedUrl && videoEmbedUrl.trim() !== '') {
+      // Prioritize video embed URL if provided
+      messageDetails.videoEmbedUrl = videoEmbedUrl;
+      // Clear any file-related properties if a video URL is given
+      messageDetails.fileName = undefined;
+      messageDetails.fileType = undefined;
+      messageDetails.fileUrl = undefined;
+      messageDetails.filePreview = undefined;
+    } else if (fileInput && fileInput.size > 0) {
+      // Process file upload if no video embed URL
       messageDetails.fileName = fileInput.name;
       messageDetails.fileType = fileInput.type;
 
@@ -107,6 +110,7 @@ export async function createMessageAction(
       if (fileInput.type.startsWith('image/') && clientFilePreview) {
         messageDetails.filePreview = clientFilePreview;
       }
+      messageDetails.videoEmbedUrl = undefined; // Ensure videoEmbedUrl is not set if file is uploaded
     }
     
     const newMessage = await addMessage(messageDetails);
@@ -195,7 +199,7 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().delete('nickname', { path: '/', sameSite: 'Lax' }); // Specify path and sameSite for delete
+  cookies().delete('nickname', { path: '/', sameSite: 'Lax' });
   redirect('/');
 }
 

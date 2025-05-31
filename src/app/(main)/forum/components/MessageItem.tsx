@@ -9,7 +9,7 @@ import { Repeat, Paperclip, MessageSquareReply, MessagesSquare } from 'lucide-re
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import Image from 'next/image'; // For Next.js optimized images
+import Image from 'next/image';
 import Link from 'next/link';
 
 interface MessageItemProps {
@@ -48,6 +48,39 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
      toast({ title: "View Comments", description: "Viewing comments functionality coming soon!"});
   };
 
+  const isYouTubeUrl = (url: string): boolean => {
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+    return youtubeRegex.test(url);
+  };
+
+  const convertYouTubeUrlToEmbed = (url: string): string => {
+    let videoId = '';
+    if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split(/[?&]/)[0];
+    } else if (url.includes('youtube.com/watch?v=')) {
+      videoId = url.split('watch?v=')[1].split('&')[0];
+    } else if (url.includes('youtube.com/embed/')) {
+      videoId = url.split('embed/')[1].split(/[?&]/)[0];
+    } else if (url.includes('youtube.com/shorts/')) {
+      videoId = url.split('shorts/')[1].split(/[?&]/)[0];
+       return `https://www.youtube.com/embed/${videoId}`;
+    }
+    // For standard YouTube video URLs, just return the embed URL
+    // For other types, this might need more sophisticated parsing
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : url; // Fallback to original URL if ID not found
+  };
+  
+  const isVimeoUrl = (url: string): boolean => {
+    const vimeoRegex = /^(https?:\/\/)?(www\.)?(vimeo\.com)\/(.+)/;
+    return vimeoRegex.test(url);
+  };
+
+  const convertVimeoUrlToEmbed = (url: string): string => {
+    const vimeoRegex = /vimeo\.com\/(\d+)/;
+    const match = url.match(vimeoRegex);
+    return match ? `https://player.vimeo.com/video/${match[1]}` : url;
+  };
+
 
   return (
     <Card className="mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out">
@@ -65,16 +98,55 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
       <CardContent className="pb-3">
         <p className="whitespace-pre-wrap">{message.content}</p>
         
-        {/* Displaying attached file */}
-        {message.fileUrl && message.fileName && (
+        {/* Displaying video embed or attached file */}
+        {message.videoEmbedUrl ? (
+          <div className="mt-3 aspect-video max-w-full overflow-hidden rounded-md">
+            {isYouTubeUrl(message.videoEmbedUrl) ? (
+              <iframe
+                width="100%"
+                src={convertYouTubeUrlToEmbed(message.videoEmbedUrl)}
+                title="YouTube video player"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="w-full h-full min-h-[300px]" 
+              ></iframe>
+            ) : isVimeoUrl(message.videoEmbedUrl) ? (
+              <iframe
+                src={convertVimeoUrlToEmbed(message.videoEmbedUrl)}
+                width="100%"
+                title="Vimeo video player"
+                frameBorder="0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full min-h-[300px]"
+              ></iframe>
+            ) : ( // Assume direct video link for <video> tag
+              <video
+                src={message.videoEmbedUrl}
+                controls
+                className="w-full rounded-md max-h-96"
+                preload="metadata"
+              />
+            )}
+          </div>
+        ) : message.fileUrl && message.fileType?.startsWith('video/') ? (
+          <div className="mt-3">
+            <video
+              src={message.fileUrl}
+              controls
+              className="w-full rounded-md max-h-96"
+              preload="metadata"
+            />
+          </div>
+        ) : message.fileUrl && message.fileName ? (
+          // Displaying other attached files (images, documents, etc.)
           <div className="mt-3 p-3 border rounded-md bg-secondary/30">
             <div className="flex items-center gap-2 mb-2">
               <Paperclip className="h-5 w-5 text-muted-foreground" />
               <span className="font-medium text-sm">{message.fileName}</span>
             </div>
             {message.fileType?.startsWith('image/') ? (
-              // If filePreview (client-side data URI) exists, use it for immediate display.
-              // Otherwise, use fileUrl (server-stored file).
               <Image 
                 src={message.filePreview || message.fileUrl} 
                 alt={message.fileName} 
@@ -88,7 +160,7 @@ export default function MessageItem({ message, currentNickname, onMessageUpdated
               </Link>
             )}
           </div>
-        )}
+        ) : null}
       </CardContent>
       <CardFooter className="flex justify-between items-center pt-0">
         <div className="flex gap-1">
