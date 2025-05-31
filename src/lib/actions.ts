@@ -5,12 +5,28 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import fs from 'fs/promises';
+import path from 'path';
 import { addMessage, incrementMessageReposts, addPoll, voteOnPoll, getMessages } from './file-store';
 import type { Message, Poll } from '@/types';
 
 const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
 });
+
+// Ensure the uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+const ensureUploadsDirExists = async () => {
+  try {
+    await fs.access(uploadsDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      await fs.mkdir(uploadsDir, { recursive: true });
+    } else {
+      throw error;
+    }
+  }
+};
 
 export async function setNicknameAction(prevState: any, formData: FormData) {
   const validatedFields = nicknameSchema.safeParse({
@@ -48,32 +64,43 @@ export async function createMessageAction(
 
   const content = formData.get('content') as string;
   const fileInput = formData.get('file') as File | null; // Received as File object by Next.js
+  const clientFilePreview = formData.get('filePreview') as string | null; // Client-generated image preview
 
   if (!content || content.trim().length === 0) {
     return { error: 'Message content cannot be empty.' };
   }
 
   try {
-    // Prepare the core message data object
+    await ensureUploadsDirExists();
+
     const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string } = {
       nickname,
       content,
     };
 
-    // Add parentId if this is a reply
     if (parentId) {
       messageDetails.parentId = parentId;
     }
 
-    // Add file metadata if a file was provided
     if (fileInput && fileInput.size > 0) {
       messageDetails.fileName = fileInput.name;
       messageDetails.fileType = fileInput.type;
+
+      // Generate a unique filename
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+      const extension = path.extname(fileInput.name);
+      const uniqueFilename = `${path.basename(fileInput.name, extension)}-${uniqueSuffix}${extension}`;
+      const filePath = path.join(uploadsDir, uniqueFilename);
       
-      // The filePreview (data URI for images) is appended to formData by the client
-      const filePreview = formData.get('filePreview') as string | null;
-      if (filePreview) {
-        messageDetails.filePreview = filePreview;
+      // Convert File to Buffer and write to disk
+      const fileBuffer = Buffer.from(await fileInput.arrayBuffer());
+      await fs.writeFile(filePath, fileBuffer);
+      
+      messageDetails.fileUrl = `/uploads/${uniqueFilename}`; // Store the public URL
+
+      // If it's an image and client sent a preview, keep it for quick display
+      if (fileInput.type.startsWith('image/') && clientFilePreview) {
+        messageDetails.filePreview = clientFilePreview;
       }
     }
     

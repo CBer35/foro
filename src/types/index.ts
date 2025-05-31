@@ -7,14 +7,17 @@ export interface Message {
   nickname: string;
   content: string;
   timestamp: string; // ISO 8601 date string
-  filePreview?: string; 
+  filePreview?: string; // Client-generated data URI for image previews
   fileName?: string;
   fileType?: string;
+  fileUrl?: string; // URL to the file stored on the server
+  parentId?: string;
   reposts: number;
+  replyCount?: number;
 }
 
 export interface PollOption {
-  id: string; 
+  id: string;
   text: string;
   votes: number;
 }

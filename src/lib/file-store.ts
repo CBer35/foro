@@ -13,8 +13,6 @@ async function ensureDataDirExists() {
   try {
     await fs.access(dataDir);
   } catch (error) {
-    // If error is other than directory not existing, rethrow it.
-    // Otherwise, create the directory.
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw error;
     }
@@ -27,15 +25,13 @@ async function readFileData<T>(filePath: string): Promise<T[]> {
   try {
     await fs.access(filePath); 
     const fileContent = await fs.readFile(filePath, 'utf-8');
-    if (fileContent.trim() === '') return []; // Handle empty file
+    if (fileContent.trim() === '') return []; 
     return JSON.parse(fileContent) as T[];
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return [];
     }
     console.error(`Error reading or parsing ${filePath}:`, error);
-    // To prevent data corruption, if parsing fails, maybe return empty or throw specific error
-    // For now, returning empty array to avoid breaking the app on bad JSON.
     return []; 
   }
 }
@@ -59,30 +55,29 @@ export async function getMessages(): Promise<Message[]> {
 export async function addMessage(
   messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
 ): Promise<Message> {
-  const messages = await readFileData<Message>(messagesFilePath); // Read current messages first
+  const messages = await getMessages(); // Read current messages first, correctly awaiting
 
   const newMessage: Message = {
     nickname: messageDetails.nickname,
     content: messageDetails.content,
-    filePreview: messageDetails.filePreview,
+    filePreview: messageDetails.filePreview, // Client-generated preview for images
     fileName: messageDetails.fileName,
     fileType: messageDetails.fileType,
+    fileUrl: messageDetails.fileUrl, // URL of the file on server
     parentId: messageDetails.parentId,
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
-    replyCount: 0, // Initialize replyCount to 0
+    replyCount: messageDetails.replyCount || 0, // Initialize replyCount
   };
 
-  messages.unshift(newMessage); // Add new message to the beginning
+  messages.unshift(newMessage);
 
-  // If this message is a reply, increment the replyCount of the parent message
   if (newMessage.parentId) {
     const parentMessageIndex = messages.findIndex(m => m.id === newMessage.parentId);
     if (parentMessageIndex > -1) {
       messages[parentMessageIndex].replyCount = (messages[parentMessageIndex].replyCount || 0) + 1;
     } else {
-      // This case should ideally not happen if parentId is always valid
       console.warn(`Parent message with id ${newMessage.parentId} not found for reply ${newMessage.id}`);
     }
   }
@@ -92,7 +87,7 @@ export async function addMessage(
 }
 
 export async function incrementMessageReposts(messageId: string): Promise<Message | null> {
-  let messages = await readFileData<Message>(messagesFilePath);
+  let messages = await getMessages(); // Correctly awaiting
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
     messages[messageIndex].reposts = (messages[messageIndex].reposts || 0) + 1;
@@ -136,7 +131,6 @@ export async function voteOnPoll(pollId: string, optionId: string): Promise<Poll
     if (optionIndex > -1) {
       currentPoll.options[optionIndex].votes += 1;
       currentPoll.totalVotes += 1;
-      // No need to reassign: polls[pollIndex] = currentPoll; as currentPoll is a reference
       await writeFileData<Poll>(pollsFilePath, polls);
       return currentPoll;
     } else {
