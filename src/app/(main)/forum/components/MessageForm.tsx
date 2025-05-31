@@ -37,8 +37,8 @@ export default function MessageForm({ onMessageCommitted }: MessageFormProps) {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
-        toast({ title: "File too large", description: "Please select a file smaller than 5MB.", variant: "destructive"});
+      if (selectedFile.size > 200 * 1024 * 1024) { // 200MB limit
+        toast({ title: "File too large", description: "Please select a file smaller than 200MB.", variant: "destructive"});
         setFile(null);
         setFilePreview(null);
         if(fileInputRef.current) fileInputRef.current.value = ""; 
