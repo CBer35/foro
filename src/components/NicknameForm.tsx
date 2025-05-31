@@ -1,11 +1,11 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
+import { useActionState, useEffect } from 'react'; // Updated import
 import { setNicknameAction } from '@/lib/actions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Send } from 'lucide-react';
 
@@ -23,14 +23,14 @@ function SubmitButton() {
 }
 
 export default function NicknameForm() {
-  const [state, formAction] = useFormState(setNicknameAction, initialState);
+  const [state, formAction] = useActionState(setNicknameAction, initialState); // Updated hook
   const { toast } = useToast();
 
   useEffect(() => {
     if (state?.errors?.nickname) {
       toast({
         title: "Validation Error",
-        description: state.errors.nickname.join(', '),
+        description: (state.errors.nickname as string[]).join(', '), // Added type assertion
         variant: "destructive",
       });
     }
@@ -51,7 +51,7 @@ export default function NicknameForm() {
           className="text-lg"
         />
         {state?.errors?.nickname && (
-          <p className="text-sm text-destructive mt-1">{state.errors.nickname.join(', ')}</p>
+          <p className="text-sm text-destructive mt-1">{(state.errors.nickname as string[]).join(', ')}</p> // Added type assertion
         )}
       </div>
       <SubmitButton />
