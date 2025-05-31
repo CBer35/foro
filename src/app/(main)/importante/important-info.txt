@@ -1,0 +1,5 @@
+Este es un mensaje importante para todos los usuarios del foro AnonymChat.
+Puedes editar este texto directamente en el archivo 'src/app/(main)/importante/important-info.txt' en el servidor.
+Asegúrate de que tus mensajes y encuestas respeten a los demás usuarios.
+¡Gracias por usar AnonymChat!
+Recuerda: la moderación se reserva el derecho de eliminar contenido inapropiado.
