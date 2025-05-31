@@ -38,10 +38,10 @@ export default function MessageForm({ onMessageCommitted, parentId }: MessageFor
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
+      if (selectedFile.size > 25 * 1024 * 1024) { // 25MB limit
         toast({ 
           title: "File too large", 
-          description: "Please select a file smaller than 5MB. For larger files, the server may have further restrictions.", 
+          description: "Please select a file smaller than 25MB. For larger files, the server may have further restrictions.", 
           variant: "destructive"
         });
         setFile(null);
