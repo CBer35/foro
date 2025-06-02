@@ -53,16 +53,20 @@ export default function AdminDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="opacity-50 cursor-not-allowed">
+        <Card className="hover:shadow-xl transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">User Management</CardTitle>
-            <Users className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg font-medium">User Management</CardTitle>
+            <Users className="h-6 w-6 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Coming Soon</div>
-            <p className="text-xs text-muted-foreground">
-              View or manage users (if applicable).
+            <p className="text-sm text-muted-foreground mb-4">
+              View user activity and manage nicknames (future feature).
             </p>
+            <Link href="/admin/users" passHref>
+              <Button className="w-full">
+                <Users className="mr-2 h-5 w-5" /> Go to Users
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
