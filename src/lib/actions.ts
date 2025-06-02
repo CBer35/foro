@@ -1,7 +1,7 @@
 
 'use server';
 
-import { cookies, headers } from 'next/headers'; // Added headers
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
@@ -16,7 +16,9 @@ import {
   getPolls as getForumPolls,
   getAllMessagesWithReplies,
   deleteMessageAndReplies as deleteMessageFromFileStore,
-  deletePoll as deletePollFromFileStore
+  deletePoll as deletePollFromFileStore,
+  updateMessageBadges,
+  updateMessageBackgroundGif
 } from './file-store';
 import type { Message, Poll } from '@/types';
 
@@ -67,19 +69,10 @@ function getIpAddress(): string | undefined {
   if (xForwardedFor) {
     return xForwardedFor.split(',')[0].trim();
   }
-  // Fallback for Vercel or other specific environments if needed
-  // const vercelIp = headersList.get('x-vercel-forwarded-for');
-  // if (vercelIp) return vercelIp;
-  
-  // In local development without a reverse proxy, x-forwarded-for might be null.
-  // The `CF-Connecting-IP` header is used by Cloudflare.
   const cfConnectingIp = headersList.get('cf-connecting-ip');
   if (cfConnectingIp) return cfConnectingIp;
-
-  // Direct connection IP (less common in production behind proxies)
   const xRealIp = headersList.get('x-real-ip');
   if (xRealIp) return xRealIp;
-  
   return undefined;
 }
 
@@ -107,10 +100,10 @@ export async function createMessageAction(
   try {
     await ensureUploadsDirExists();
 
-    const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string } = {
+    const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount' | 'badges' | 'messageBackgroundGif'> & { parentId?: string } = {
       nickname,
       content,
-      ipAddress, // Store IP address
+      ipAddress,
     };
 
     if (parentId) {
@@ -204,7 +197,7 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
       nickname,
       question,
       options: optionTexts,
-      ipAddress, // Store IP address
+      ipAddress,
     };
 
     const newPoll = await addPoll(pollData);
@@ -367,5 +360,70 @@ export async function adminDeletePollAction(pollId: string): Promise<{ success?:
   } catch (e) {
     console.error('Error deleting poll by admin:', e);
     return { error: 'Failed to delete poll.' };
+  }
+}
+
+// New admin actions for badges and background GIF
+const badgeSchema = z.enum(["admin", "mod", "negro"]);
+
+export async function adminToggleMessageBadgeAction(messageId: string, badge: string): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
+  const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) return { error: 'Unauthorized.' };
+
+  const validatedBadge = badgeSchema.safeParse(badge);
+  if (!validatedBadge.success) return { error: 'Invalid badge type.' };
+  
+  try {
+    const messages = await getAllMessagesWithReplies(); // Fetch all messages
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return { error: 'Message not found.' };
+
+    const currentMessage = messages[messageIndex];
+    let currentBadges = currentMessage.badges ? [...currentMessage.badges] : [];
+    
+    if (currentBadges.includes(validatedBadge.data)) {
+      currentBadges = currentBadges.filter(b => b !== validatedBadge.data); // Remove badge
+    } else {
+      currentBadges.push(validatedBadge.data); // Add badge
+    }
+    
+    const updatedMessage = await updateMessageBadges(messageId, currentBadges);
+    if (updatedMessage) {
+      revalidatePath('/admin/messages');
+      revalidatePath('/forum');
+      return { success: 'Badges updated successfully!', updatedMessage };
+    }
+    return { error: 'Failed to update badges.' };
+  } catch (e) {
+    console.error('Error updating badges:', e);
+    return { error: 'Server error updating badges.' };
+  }
+}
+
+const gifUrlSchema = z.string().url({ message: "Invalid GIF URL." }).or(z.literal('')); // Allow empty string to clear
+
+export async function adminSetMessageBackgroundGifAction(messageId: string, gifUrl: string | null): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
+  const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) return { error: 'Unauthorized.' };
+
+  if (gifUrl !== null && gifUrl.trim() !== '') {
+    const validatedUrl = gifUrlSchema.safeParse(gifUrl);
+    if (!validatedUrl.success) {
+      return { error: validatedUrl.error.flatten().formErrors.join(', ') };
+    }
+  }
+  
+  try {
+    const finalGifUrl = (gifUrl && gifUrl.trim() !== '') ? gifUrl.trim() : null;
+    const updatedMessage = await updateMessageBackgroundGif(messageId, finalGifUrl);
+    if (updatedMessage) {
+      revalidatePath('/admin/messages');
+      revalidatePath('/forum');
+      return { success: 'Message background GIF updated!', updatedMessage };
+    }
+    return { error: 'Failed to update background GIF.' };
+  } catch (e) {
+    console.error('Error updating background GIF:', e);
+    return { error: 'Server error updating background GIF.' };
   }
 }

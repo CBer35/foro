@@ -64,7 +64,7 @@ export async function getAllMessagesWithReplies(): Promise<Message[]> {
 
 
 export async function addMessage(
-  messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
+  messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount' | 'badges' | 'messageBackgroundGif'> & { parentId?: string }
 ): Promise<Message> {
   const messages = await readFileData<Message>(messagesFilePath);
 
@@ -77,11 +77,13 @@ export async function addMessage(
     fileUrl: messageDetails.fileUrl,
     videoEmbedUrl: messageDetails.videoEmbedUrl,
     parentId: messageDetails.parentId,
-    ipAddress: messageDetails.ipAddress, // Ensure ipAddress is saved
+    ipAddress: messageDetails.ipAddress,
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
     replyCount: 0,
+    badges: [], // Initialize with empty badges
+    messageBackgroundGif: undefined, // Initialize with no background
   };
 
   messages.push(newMessage);
@@ -142,6 +144,28 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   return messages.length < originalLength;
 }
 
+export async function updateMessageBadges(messageId: string, newBadges: string[]): Promise<Message | null> {
+  let messages = await readFileData<Message>(messagesFilePath);
+  const messageIndex = messages.findIndex(m => m.id === messageId);
+  if (messageIndex > -1) {
+    messages[messageIndex].badges = [...newBadges]; // Ensure it's a new array
+    await writeFileData<Message>(messagesFilePath, messages);
+    return messages[messageIndex];
+  }
+  return null;
+}
+
+export async function updateMessageBackgroundGif(messageId: string, gifUrl: string | null): Promise<Message | null> {
+  let messages = await readFileData<Message>(messagesFilePath);
+  const messageIndex = messages.findIndex(m => m.id === messageId);
+  if (messageIndex > -1) {
+    messages[messageIndex].messageBackgroundGif = gifUrl ?? undefined;
+    await writeFileData<Message>(messagesFilePath, messages);
+    return messages[messageIndex];
+  }
+  return null;
+}
+
 
 // Polls
 export async function getPolls(): Promise<Poll[]> {
@@ -160,7 +184,7 @@ export async function addPoll(pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVo
       text,
       votes: 0,
     })),
-    ipAddress: pollData.ipAddress, // Ensure ipAddress is saved
+    ipAddress: pollData.ipAddress,
     timestamp: new Date().toISOString(),
     totalVotes: 0,
   };

@@ -16,6 +16,8 @@ export interface Message {
   reposts: number;
   replyCount?: number;
   ipAddress?: string; // Added IP address
+  badges?: string[]; // User badges for this message
+  messageBackgroundGif?: string; // URL for a GIF background for this message
 }
 
 export interface PollOption {
@@ -33,4 +35,3 @@ export interface Poll {
   totalVotes: number;
   ipAddress?: string; // Added IP address
 }
-

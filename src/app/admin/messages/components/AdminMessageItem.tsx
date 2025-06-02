@@ -5,10 +5,13 @@ import type { Message } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Trash2, FileText, Video, Link as LinkIcon, Fingerprint } from 'lucide-react'; // Added Fingerprint
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Trash2, FileText, Video, Link as LinkIcon, Fingerprint, BadgeCheck, ImageIcon, Palette, Sparkles, Shield, ShieldCheck, ShieldX } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { adminDeleteMessageAction } from '@/lib/actions';
+import { adminDeleteMessageAction, adminToggleMessageBadgeAction, adminSetMessageBackgroundGifAction } from '@/lib/actions';
+import { useState, type FormEvent } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,10 +29,13 @@ import Link from 'next/link';
 interface AdminMessageItemProps {
   message: Message;
   onMessageDeleted: (messageId: string) => void;
+  onMessageUpdated: (updatedMessage: Message) => void; // To refresh local state after badge/bg update
 }
 
-export default function AdminMessageItem({ message, onMessageDeleted }: AdminMessageItemProps) {
+export default function AdminMessageItem({ message: initialMessage, onMessageDeleted, onMessageUpdated }: AdminMessageItemProps) {
   const { toast } = useToast();
+  const [message, setMessage] = useState<Message>(initialMessage);
+  const [gifUrl, setGifUrl] = useState(initialMessage.messageBackgroundGif || '');
 
   const handleDelete = async () => {
     const result = await adminDeleteMessageAction(message.id);
@@ -46,78 +52,158 @@ export default function AdminMessageItem({ message, onMessageDeleted }: AdminMes
     return name.substring(0, 2).toUpperCase();
   };
 
-  return (
-    <Card className={`shadow-sm ${message.parentId ? 'ml-6 border-l-2 border-muted pl-3' : ''}`}>
-      <CardHeader className="flex flex-row items-start space-x-3 pb-2">
-        <Avatar>
-          <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
-        </Avatar>
-        <div>
-          <CardTitle className="text-md font-semibold">{message.nickname || 'Anonymous'}</CardTitle>
-          <CardDescription className="text-xs">
-            ID: {message.id} • Posted {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
-            {message.parentId && <span className="italic text-muted-foreground/80"> (reply to {message.parentId})</span>}
-          </CardDescription>
-           <p className="text-xs text-muted-foreground">
-            Reposts: {message.reposts}, Replies: {message.replyCount || 0}
-          </p>
-          {message.ipAddress && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Fingerprint className="h-3 w-3" /> IP: {message.ipAddress}
-            </p>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="pb-3">
-        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-        
-        {message.videoEmbedUrl && (
-          <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Video className="h-4 w-4"/> Video Link: 
-              <Link href={message.videoEmbedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
-                 {message.videoEmbedUrl}
-              </Link>
-            </div>
-          </div>
-        )}
+  const handleToggleBadge = async (badge: 'admin' | 'mod' | 'negro') => {
+    const result = await adminToggleMessageBadgeAction(message.id, badge);
+    if (result?.success && result.updatedMessage) {
+      toast({ title: "Success", description: `Badge '${badge}' toggled.` });
+      setMessage(result.updatedMessage);
+      onMessageUpdated(result.updatedMessage);
+    } else if (result?.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    }
+  };
 
-        {message.fileUrl && message.fileName && (
-          <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
-            <div className="flex items-center gap-1 text-muted-foreground">
-              {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail"/> : <FileText className="h-4 w-4"/> }
-              File: 
-              <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
-                 {message.fileName} ({message.fileType})
-              </Link>
+  const handleSetBackgroundGif = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const result = await adminSetMessageBackgroundGifAction(message.id, gifUrl.trim() === '' ? null : gifUrl.trim());
+     if (result?.success && result.updatedMessage) {
+      toast({ title: "Success", description: "Background GIF updated." });
+      setMessage(result.updatedMessage);
+      onMessageUpdated(result.updatedMessage);
+    } else if (result?.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    }
+  };
+  
+  const getBadgeStyle = (badge: string) => {
+    switch (badge) {
+      case 'admin': return "bg-red-600 text-white";
+      case 'mod': return "bg-blue-600 text-white";
+      case 'negro': return "bg-black text-white";
+      default: return "bg-gray-500 text-white";
+    }
+  };
+
+  return (
+    <Card 
+      className={`shadow-sm ${message.parentId ? 'ml-6 border-l-2 border-muted pl-3' : ''}`}
+      style={message.messageBackgroundGif ? { 
+        backgroundImage: `url('${message.messageBackgroundGif}')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      } : {}}
+    >
+      <div className={`${message.messageBackgroundGif ? 'bg-card/80 backdrop-blur-sm rounded-lg' : ''}`}> {/* Inner div for content when BG is present */}
+        <CardHeader className="flex flex-row items-start space-x-3 pb-2">
+          <Avatar>
+            <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <CardTitle className="text-md font-semibold flex items-center gap-2">
+              {message.nickname || 'Anonymous'}
+              {message.badges && message.badges.map(badge => (
+                <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
+                  {badge}
+                </span>
+              ))}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              ID: {message.id} • Posted {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
+              {message.parentId && <span className="italic text-muted-foreground/80"> (reply to {message.parentId})</span>}
+            </CardDescription>
+            <p className="text-xs text-muted-foreground">
+              Reposts: {message.reposts}, Replies: {message.replyCount || 0}
+            </p>
+            {message.ipAddress && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Fingerprint className="h-3 w-3" /> IP: {message.ipAddress}
+              </p>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pb-3">
+          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+          
+          {message.videoEmbedUrl && (
+            <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Video className="h-4 w-4"/> Video Link: 
+                <Link href={message.videoEmbedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                  {message.videoEmbedUrl}
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {message.fileUrl && message.fileName && (
+            <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
+              <div className="flex items-center gap-1 text-muted-foreground">
+                {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail"/> : <FileText className="h-4 w-4"/> }
+                File: 
+                <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                  {message.fileName} ({message.fileType})
+                </Link>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="flex flex-col items-start gap-4 pt-2 border-t mt-2">
+          <div className="w-full">
+            <Label className="text-xs font-semibold">Manage Badges</Label>
+            <div className="flex gap-2 mt-1">
+              {(['admin', 'mod', 'negro'] as const).map(badgeType => (
+                <Button key={badgeType} variant="outline" size="sm" onClick={() => handleToggleBadge(badgeType)}>
+                  {message.badges?.includes(badgeType) ? <ShieldX className="mr-1 h-4 w-4 text-destructive" /> : <ShieldCheck className="mr-1 h-4 w-4 text-green-600" />}
+                  {badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}
+                </Button>
+              ))}
             </div>
           </div>
-        )}
-      </CardContent>
-      <CardFooter className="flex justify-end items-center pt-0">
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="sm">
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the message
-                {message.parentId ? '' : ' and all its replies'}.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
-                Yes, delete message
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </CardFooter>
+
+          <form onSubmit={handleSetBackgroundGif} className="w-full space-y-2">
+            <Label htmlFor={`gifUrl-${message.id}`} className="text-xs font-semibold">Set Background GIF URL</Label>
+            <div className="flex gap-2">
+              <Input 
+                id={`gifUrl-${message.id}`}
+                type="url" 
+                value={gifUrl} 
+                onChange={(e) => setGifUrl(e.target.value)}
+                placeholder="Enter GIF URL or leave blank to clear"
+                className="h-8 text-xs"
+              />
+              <Button type="submit" variant="outline" size="sm" className="h-8">
+                <Palette className="mr-1 h-4 w-4" /> Set
+              </Button>
+            </div>
+          </form>
+          
+          <div className="flex justify-end w-full">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete Message
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the message
+                    {message.parentId ? '' : ' and all its replies'}.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+                    Yes, delete message
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </CardFooter>
+      </div>
     </Card>
   );
 }

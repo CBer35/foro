@@ -2,7 +2,7 @@
 'use client';
 
 import type { Message } from '@/types';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import AdminMessageItem from './AdminMessageItem';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,18 +15,23 @@ export default function AdminMessageList({ initialMessages }: AdminMessageListPr
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleMessageDeleted = (messageId: string) => {
+  const handleMessageDeleted = useCallback((messageId: string) => {
     setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId && msg.parentId !== messageId));
-     // Also filter out replies if a parent was deleted, though server action handles the file.
-     // This is for optimistic UI update.
-  };
+  }, []);
+
+  const handleMessageUpdated = useCallback((updatedMessage: Message) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+    );
+  }, []);
 
   const filteredMessages = messages.filter(message => {
     const contentMatch = message.content.toLowerCase().includes(searchTerm.toLowerCase());
     const nicknameMatch = message.nickname.toLowerCase().includes(searchTerm.toLowerCase());
     const idMatch = message.id.toLowerCase().includes(searchTerm.toLowerCase());
-    return contentMatch || nicknameMatch || idMatch;
-  });
+    const badgeMatch = message.badges?.some(badge => badge.toLowerCase().includes(searchTerm.toLowerCase()));
+    return contentMatch || nicknameMatch || idMatch || badgeMatch;
+  }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
     <div className="space-y-6">
@@ -35,7 +40,7 @@ export default function AdminMessageList({ initialMessages }: AdminMessageListPr
         <Input
           id="search-messages"
           type="text"
-          placeholder="Search by content, nickname, or ID..."
+          placeholder="Search by content, nickname, ID, or badge..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="mt-1"
@@ -53,6 +58,7 @@ export default function AdminMessageList({ initialMessages }: AdminMessageListPr
             key={message.id} 
             message={message} 
             onMessageDeleted={handleMessageDeleted} 
+            onMessageUpdated={handleMessageUpdated}
           />
         ))}
       </div>
