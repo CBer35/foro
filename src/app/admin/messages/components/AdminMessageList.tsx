@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { Message } from '@/types';
+import type { Message, UserPreference } from '@/types';
 import { useState, useCallback } from 'react';
 import AdminMessageItem from './AdminMessageItem';
 import { Input } from '@/components/ui/input';
@@ -9,27 +9,28 @@ import { Label } from '@/components/ui/label';
 
 interface AdminMessageListProps {
   initialMessages: Message[];
+  userPreferences: UserPreference[]; // Add user preferences
 }
 
-export default function AdminMessageList({ initialMessages }: AdminMessageListProps) {
+export default function AdminMessageList({ initialMessages, userPreferences }: AdminMessageListProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Create a map for quick preference lookup
+  const preferencesMap = new Map(userPreferences.map(p => [p.nickname, p]));
 
   const handleMessageDeleted = useCallback((messageId: string) => {
     setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId && msg.parentId !== messageId));
   }, []);
 
-  const handleMessageUpdated = useCallback((updatedMessage: Message) => {
-    setMessages(prevMessages => 
-      prevMessages.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
-    );
-  }, []);
+  // onMessageUpdated is no longer needed here for badges/GIFs as they are per-user
 
   const filteredMessages = messages.filter(message => {
+    const authorPref = preferencesMap.get(message.nickname);
     const contentMatch = message.content.toLowerCase().includes(searchTerm.toLowerCase());
     const nicknameMatch = message.nickname.toLowerCase().includes(searchTerm.toLowerCase());
     const idMatch = message.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const badgeMatch = message.badges?.some(badge => badge.toLowerCase().includes(searchTerm.toLowerCase()));
+    const badgeMatch = authorPref?.badges?.some(badge => badge.toLowerCase().includes(searchTerm.toLowerCase()));
     return contentMatch || nicknameMatch || idMatch || badgeMatch;
   }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -40,7 +41,7 @@ export default function AdminMessageList({ initialMessages }: AdminMessageListPr
         <Input
           id="search-messages"
           type="text"
-          placeholder="Search by content, nickname, ID, or badge..."
+          placeholder="Search by content, nickname, ID, or user badge..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="mt-1"
@@ -53,14 +54,17 @@ export default function AdminMessageList({ initialMessages }: AdminMessageListPr
          <p className="text-muted-foreground text-center py-4">No messages to display.</p>
       )}
       <div className="space-y-4">
-        {filteredMessages.map((message) => (
-          <AdminMessageItem 
-            key={message.id} 
-            message={message} 
-            onMessageDeleted={handleMessageDeleted} 
-            onMessageUpdated={handleMessageUpdated}
-          />
-        ))}
+        {filteredMessages.map((message) => {
+          const authorPreference = preferencesMap.get(message.nickname);
+          return (
+            <AdminMessageItem 
+              key={message.id} 
+              message={message} 
+              authorPreference={authorPreference}
+              onMessageDeleted={handleMessageDeleted}
+            />
+          );
+        })}
       </div>
     </div>
   );

@@ -17,35 +17,29 @@ import {
   getAllMessagesWithReplies,
   deleteMessageAndReplies as deleteMessageFromFileStore,
   deletePoll as deletePollFromFileStore,
-  updateMessageBadges,
-  updateMessageBackgroundGif as updateMessageBackgroundGifInFileStore
+  getUserPreferences,
+  upsertUserPreference,
+  deleteUserBackgroundGifFile,
 } from './file-store';
-import type { Message, Poll } from '@/types';
+import type { Message, Poll, UserPreference } from '@/types';
 
 const nicknameSchema = z.object({
   nickname: z.string().min(3, "Nickname must be at least 3 characters").max(20, "Nickname can be at most 20 characters long."),
 });
 
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-const messageBackgroundsDir = path.join(uploadsDir, 'message-backgrounds');
+const userBackgroundsDir = path.join(uploadsDir, 'user-backgrounds'); // For user-specific backgrounds
 
 const ensureUploadsDirsExist = async () => {
-  try {
-    await fs.access(uploadsDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      await fs.mkdir(uploadsDir, { recursive: true });
-    } else {
-      throw error;
-    }
-  }
-  try {
-    await fs.access(messageBackgroundsDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      await fs.mkdir(messageBackgroundsDir, { recursive: true });
-    } else {
-      throw error;
+  for (const dir of [uploadsDir, userBackgroundsDir]) {
+    try {
+      await fs.access(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await fs.mkdir(dir, { recursive: true });
+      } else {
+        throw error;
+      }
     }
   }
 };
@@ -111,7 +105,7 @@ export async function createMessageAction(
   try {
     await ensureUploadsDirsExist();
 
-    const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount' | 'badges' | 'messageBackgroundGif'> & { parentId?: string } = {
+    const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string } = {
       nickname,
       content,
       ipAddress,
@@ -134,7 +128,7 @@ export async function createMessageAction(
       const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
       const extension = path.extname(fileInput.name);
       const uniqueFilename = `${path.basename(fileInput.name, extension)}-${uniqueSuffix}${extension}`;
-      const filePath = path.join(uploadsDir, uniqueFilename);
+      const filePath = path.join(uploadsDir, uniqueFilename); // Message files still go to general uploads
       
       const fileBuffer = Buffer.from(await fileInput.arrayBuffer());
       await fs.writeFile(filePath, fileBuffer);
@@ -241,7 +235,7 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().delete('nickname'); // More explicit deletion
+  cookies().delete('nickname');
   revalidatePath('/');
   redirect('/');
 }
@@ -311,7 +305,7 @@ export async function adminLoginAction(prevState: any, formData: FormData) {
 }
 
 export async function adminLogoutAction() {
-  cookies().delete('admin-session'); // More explicit deletion
+  cookies().delete('admin-session');
   revalidatePath('/admin/login');
   redirect('/admin/login');
 }
@@ -376,124 +370,73 @@ export async function adminDeletePollAction(pollId: string): Promise<{ success?:
   }
 }
 
-const badgeSchema = z.enum(["admin", "mod", "negro"]);
-
-export async function adminToggleMessageBadgeAction(messageId: string, badge: string): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
+export async function adminSetUserPreferenceAction(formData: FormData): Promise<{ success?: string; error?: string; updatedPreference?: UserPreference; }> {
   const isAdmin = cookies().get('admin-session')?.value === 'true';
   if (!isAdmin) return { error: 'Unauthorized.' };
 
-  const validatedBadge = badgeSchema.safeParse(badge);
-  if (!validatedBadge.success) return { error: 'Invalid badge type.' };
-  
-  try {
-    const messages = await getAllMessagesWithReplies(); 
-    const messageIndex = messages.findIndex(m => m.id === messageId);
-    if (messageIndex === -1) return { error: 'Message not found.' };
+  const nickname = formData.get('nickname') as string;
+  if (!nickname) return { error: 'Nickname is required.' };
 
-    const currentMessage = messages[messageIndex];
-    let currentBadges = currentMessage.badges ? [...currentMessage.badges] : [];
-    
-    if (currentBadges.includes(validatedBadge.data)) {
-      currentBadges = currentBadges.filter(b => b !== validatedBadge.data); 
-    } else {
-      currentBadges.push(validatedBadge.data); 
-    }
-    
-    const updatedMessage = await updateMessageBadges(messageId, currentBadges);
-    if (updatedMessage) {
-      revalidatePath('/admin/messages');
-      revalidatePath('/forum');
-      return { success: 'Badges updated successfully!', updatedMessage };
-    }
-    return { error: 'Failed to update badges.' };
-  } catch (e) {
-    console.error('Error updating badges:', e);
-    return { error: 'Server error updating badges.' };
-  }
-}
+  const selectedBadges = formData.getAll('badges[]') as string[];
+  const backgroundGifFile = formData.get('backgroundGifFile') as File | null;
+  const removeBackgroundGif = formData.get('removeBackgroundGif') === 'true';
 
-export async function adminSetMessageBackgroundGifAction(messageId: string, formData: FormData): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
-  const isAdmin = cookies().get('admin-session')?.value === 'true';
-  if (!isAdmin) return { error: 'Unauthorized.' };
-
-  const action = formData.get('action') as string;
-
-  if (action === 'remove') {
-    try {
-      // Attempt to find the current message to delete its old background if it exists
-      const messages = await getAllMessagesWithReplies();
-      const currentMessage = messages.find(m => m.id === messageId);
-      if (currentMessage && currentMessage.messageBackgroundGif) {
-        const oldGifPath = path.join(process.cwd(), 'public', currentMessage.messageBackgroundGif);
-        try {
-          await fs.unlink(oldGifPath);
-        } catch (unlinkError) {
-          // Log error if old file deletion fails, but proceed to clear DB record
-          console.warn(`Could not delete old background GIF file ${oldGifPath}:`, unlinkError);
-        }
-      }
-
-      const updatedMessage = await updateMessageBackgroundGifInFileStore(messageId, null);
-      if (updatedMessage) {
-        revalidatePath('/admin/messages');
-        revalidatePath('/forum');
-        return { success: 'Message background GIF removed!', updatedMessage };
-      }
-      return { error: 'Failed to remove background GIF reference.' };
-    } catch (e) {
-      console.error('Error removing background GIF:', e);
-      return { error: 'Server error removing background GIF.' };
-    }
-  }
-
-  const gifFile = formData.get('backgroundGifFile') as File | null;
-
-  if (!gifFile || gifFile.size === 0) {
-    return { error: 'No GIF file provided.' };
-  }
-
-  if (gifFile.type !== 'image/gif') {
-    return { error: 'Invalid file type. Please upload a GIF.' };
-  }
-  
-  // Consider adding a size limit for GIFs here if needed
-  // e.g., if (gifFile.size > 5 * 1024 * 1024) { return { error: 'GIF is too large (max 5MB).'}; }
-
+  let newBackgroundGifUrl: string | null | undefined = undefined; // undefined means don't change
 
   try {
     await ensureUploadsDirsExist();
-    
-    // Delete old GIF if exists
-    const messages = await getAllMessagesWithReplies();
-    const currentMessage = messages.find(m => m.id === messageId);
-    if (currentMessage && currentMessage.messageBackgroundGif) {
-      const oldGifPath = path.join(process.cwd(), 'public', currentMessage.messageBackgroundGif);
-      try {
-        await fs.unlink(oldGifPath);
-      } catch (unlinkError) {
-        console.warn(`Could not delete old background GIF file ${oldGifPath} before update:`, unlinkError);
+    const preferences = await getUserPreferences();
+    const currentUserPref = preferences.find(p => p.nickname === nickname);
+
+    if (removeBackgroundGif) {
+      if (currentUserPref?.backgroundGifUrl) {
+        await deleteUserBackgroundGifFile(currentUserPref.backgroundGifUrl);
       }
+      newBackgroundGifUrl = null; // Explicitly remove
+    } else if (backgroundGifFile && backgroundGifFile.size > 0) {
+      if (backgroundGifFile.type !== 'image/gif') {
+        return { error: 'Invalid file type. Please upload a GIF for user background.' };
+      }
+      if (currentUserPref?.backgroundGifUrl) {
+        await deleteUserBackgroundGifFile(currentUserPref.backgroundGifUrl);
+      }
+      
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+      // Sanitize nickname for filename
+      const sanitizedNickname = nickname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const uniqueFilename = `userbg-${sanitizedNickname}-${uniqueSuffix}.gif`;
+      const gifPath = path.join(userBackgroundsDir, uniqueFilename);
+      
+      const fileBuffer = Buffer.from(await backgroundGifFile.arrayBuffer());
+      await fs.writeFile(gifPath, fileBuffer);
+      newBackgroundGifUrl = `/uploads/user-backgrounds/${uniqueFilename}`;
     }
 
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    const extension = path.extname(gifFile.name) || '.gif'; // Ensure .gif if original name lacks it
-    const uniqueFilename = `msgbg-${messageId.substring(0,8)}-${uniqueSuffix}${extension}`;
-    const gifPath = path.join(messageBackgroundsDir, uniqueFilename);
-    const publicGifUrl = `/uploads/message-backgrounds/${uniqueFilename}`;
-
-    const fileBuffer = Buffer.from(await gifFile.arrayBuffer());
-    await fs.writeFile(gifPath, fileBuffer);
+    const updatedPreference = await upsertUserPreference(nickname, selectedBadges, newBackgroundGifUrl);
     
-    const updatedMessage = await updateMessageBackgroundGifInFileStore(messageId, publicGifUrl);
-    if (updatedMessage) {
-      revalidatePath('/admin/messages');
-      revalidatePath('/forum');
-      return { success: 'Message background GIF updated!', updatedMessage };
-    }
-    return { error: 'Failed to update background GIF reference.' };
+    revalidatePath('/admin/users');
+    revalidatePath('/forum');
+    return { success: `Preferences for ${nickname} updated!`, updatedPreference };
+
   } catch (e) {
-    console.error('Error updating background GIF:', e);
-    const errorMessage = e instanceof Error ? e.message : 'Server error updating background GIF.';
+    console.error(`Error setting user preference for ${nickname}:`, e);
+    const errorMessage = e instanceof Error ? e.message : 'Server error setting user preference.';
     return { error: errorMessage };
   }
+}
+
+export async function getAllUniqueNicknamesAction(): Promise<string[]> {
+    const isAdmin = cookies().get('admin-session')?.value === 'true';
+    if (!isAdmin) return [];
+
+    const messages = await getAllMessagesWithReplies();
+    const polls = await getForumPolls();
+    const preferences = await getUserPreferences();
+
+    const nicknames = new Set<string>();
+    messages.forEach(m => nicknames.add(m.nickname));
+    polls.forEach(p => nicknames.add(p.nickname));
+    preferences.forEach(p => nicknames.add(p.nickname));
+    
+    return Array.from(nicknames).sort();
 }

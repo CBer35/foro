@@ -3,8 +3,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import ForumClientContent from './components/ForumClientContent';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getAllMessagesWithReplies, getPolls } from '@/lib/file-store'; // Changed to getAllMessagesWithReplies
-import type { Message, Poll } from '@/types';
+import { getAllMessagesWithReplies, getPolls, getUserPreferences } from '@/lib/file-store';
+import type { Message, Poll, UserPreference } from '@/types';
 
 export default async function ForumPage() {
   const cookieStore = cookies();
@@ -16,16 +16,19 @@ export default async function ForumPage() {
 
   let initialMessages: Message[] = [];
   let initialPolls: Poll[] = [];
+  let initialUserPreferences: UserPreference[] = [];
   let errorLoadingData: string | null = null;
 
   try {
-    initialMessages = await getAllMessagesWithReplies(); // Fetch all messages initially
+    initialMessages = await getAllMessagesWithReplies();
     initialPolls = await getPolls();
+    initialUserPreferences = await getUserPreferences();
   } catch (error) {
     console.error("Error loading forum data from files:", error);
     errorLoadingData = "Could not load forum data. Please try again later.";
     initialMessages = [];
     initialPolls = [];
+    initialUserPreferences = [];
   }
 
 
@@ -52,8 +55,9 @@ export default async function ForumPage() {
       )}
       <ForumClientContent 
         initialNickname={nickname} 
-        initialMessages={initialMessages} // Pass all messages
+        initialMessages={initialMessages}
         initialPolls={initialPolls}
+        initialUserPreferences={initialUserPreferences}
       />
     </div>
   );

@@ -1,7 +1,4 @@
 
-// No more Firebase Timestamp type
-// export type { Timestamp } from 'firebase/firestore';
-
 export interface Message {
   id: string;
   nickname: string;
@@ -15,9 +12,7 @@ export interface Message {
   parentId?: string;
   reposts: number;
   replyCount?: number;
-  ipAddress?: string; // Added IP address
-  badges?: string[]; // User badges for this message
-  messageBackgroundGif?: string; // URL for a GIF background for this message
+  ipAddress?: string;
 }
 
 export interface PollOption {
@@ -33,5 +28,11 @@ export interface Poll {
   options: PollOption[];
   timestamp: string; // ISO 8601 date string
   totalVotes: number;
-  ipAddress?: string; // Added IP address
+  ipAddress?: string;
+}
+
+export interface UserPreference {
+  nickname: string;
+  badges?: string[];
+  backgroundGifUrl?: string;
 }

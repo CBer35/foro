@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { Message } from '@/types';
+import type { Message, UserPreference } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -17,12 +17,22 @@ import MessageForm from './MessageForm';
 interface MessageItemProps {
   message: Message;
   currentNickname: string;
+  authorPreference?: UserPreference;
   onMessageUpdated: (updatedMessage: Message) => void;
   onReplyCommitted?: (newReply: Message, parentId: string) => void;
   isReply?: boolean;
+  userPreferencesMap?: Map<string, UserPreference>; // For looking up preferences of replies
 }
 
-export default function MessageItem({ message: initialMessage, currentNickname, onMessageUpdated, onReplyCommitted, isReply = false }: MessageItemProps) {
+export default function MessageItem({ 
+  message: initialMessage, 
+  currentNickname, 
+  authorPreference,
+  onMessageUpdated, 
+  onReplyCommitted, 
+  isReply = false,
+  userPreferencesMap
+}: MessageItemProps) {
   const { toast } = useToast();
   const [message, setMessage] = useState<Message>(initialMessage);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
@@ -151,26 +161,28 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
     }
   };
   
-  const hasBackgroundGif = !!message.messageBackgroundGif;
+  const userBadges = authorPreference?.badges || [];
+  const userBackgroundGif = authorPreference?.backgroundGifUrl;
+  const hasBackgroundGif = !!userBackgroundGif;
 
   return (
     <Card 
       className={`mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out relative ${isReply ? 'ml-6 sm:ml-10 border-l-2 border-primary/30 pl-3' : ''}`}
       style={hasBackgroundGif ? { 
-        backgroundImage: `url('${message.messageBackgroundGif}')`,
+        backgroundImage: `url('${userBackgroundGif}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat'
       } : {}}
     >
-      <CardHeader className={`flex flex-row items-start space-x-3 pb-2 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 rounded-t-lg m-1 mb-0' : ''}`}>
+      <CardHeader className={`flex flex-row items-start space-x-3 pb-2 ${hasBackgroundGif ? 'bg-card/90 backdrop-blur-md p-3 rounded-t-lg m-1 mb-0' : ''}`}>
         <Avatar>
           <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
         </Avatar>
         <div>
           <CardTitle className="text-lg font-semibold flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>{message.nickname || 'Anonymous'}</span>
-            {message.badges && message.badges.map(badge => (
+            {userBadges.map(badge => (
               <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
                 {badge}
               </span>
@@ -182,7 +194,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
           </p>
         </div>
       </CardHeader>
-      <CardContent className={`pb-3 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 rounded-b-lg m-1 mt-0 relative z-10' : ''}`}>
+      <CardContent className={`pb-3 ${hasBackgroundGif ? 'bg-card/90 backdrop-blur-md p-3 rounded-b-lg m-1 mt-0 relative z-10' : ''}`}>
         <p className="whitespace-pre-wrap">{message.content}</p>
         
         {videoToEmbed && (
@@ -260,7 +272,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
           </div>
         ) : null}
       </CardContent>
-      <CardFooter className={`flex justify-between items-center pt-0 ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm p-3 rounded-b-lg m-1 mt-0 relative z-0' : ''}`}>
+      <CardFooter className={`flex justify-between items-center pt-0 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-md p-3 rounded-b-lg m-1 mt-0 relative z-0' : ''}`}>
         <div className="flex gap-1">
           {!isReply && (
             <>
@@ -282,27 +294,32 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
       </CardFooter>
 
       {showReplyForm && !isReply && (
-        <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm m-1 mt-0 rounded-b-lg' : ''}`}>
+        <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-md m-1 mt-0 rounded-b-lg' : ''}`}>
           <MessageForm onMessageCommitted={handleReplyCommittedChild} parentId={message.id} />
         </div>
       )}
 
       {showComments && !isReply && (
-         <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm m-1 mt-0 rounded-b-lg' : ''}`}>
+         <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-md m-1 mt-0 rounded-b-lg' : ''}`}>
           <h3 className="text-md font-semibold mb-3">Comments:</h3>
           {isLoadingComments && <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /> <span className="ml-2">Loading comments...</span></div>}
           {!isLoadingComments && comments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
           {!isLoadingComments && comments.length > 0 && (
             <div className="space-y-4">
-              {comments.map(comment => (
-                <MessageItem 
-                  key={comment.id} 
-                  message={comment} 
-                  currentNickname={currentNickname}
-                  onMessageUpdated={handleChildCommentUpdated} 
-                  isReply={true}
-                />
-              ))}
+              {comments.map(comment => {
+                 const replyAuthorPreference = userPreferencesMap?.get(comment.nickname);
+                 return (
+                    <MessageItem 
+                        key={comment.id} 
+                        message={comment} 
+                        currentNickname={currentNickname}
+                        authorPreference={replyAuthorPreference}
+                        onMessageUpdated={handleChildCommentUpdated} 
+                        isReply={true}
+                        userPreferencesMap={userPreferencesMap}
+                    />
+                );
+            })}
             </div>
           )}
         </div>

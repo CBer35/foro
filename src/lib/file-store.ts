@@ -3,12 +3,17 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import type { Message, Poll } from '@/types';
+import type { Message, Poll, UserPreference } from '@/types';
 
 const dataDir = path.join(process.cwd(), 'data');
 const messagesFilePath = path.join(dataDir, 'messages.json');
 const pollsFilePath = path.join(dataDir, 'polls.json');
-const uploadsDirPublic = path.join(process.cwd(), 'public', 'uploads'); // for deletions
+const userPreferencesFilePath = path.join(dataDir, 'user_preferences.json');
+
+const uploadsDirPublic = path.join(process.cwd(), 'public', 'uploads');
+const messageBackgroundsDirPublic = path.join(uploadsDirPublic, 'message-backgrounds'); // To be deprecated for direct use
+const userBackgroundsDirPublic = path.join(uploadsDirPublic, 'user-backgrounds');
+
 
 async function ensureDataDirExists() {
   try {
@@ -21,6 +26,27 @@ async function ensureDataDirExists() {
   }
 }
 
+async function ensureUploadsDirsExist() {
+  try {
+    await fs.access(uploadsDirPublic);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      await fs.mkdir(uploadsDirPublic, { recursive: true });
+    } else { throw error; }
+  }
+  // Ensure specific subdirectories exist
+  for (const dir of [messageBackgroundsDirPublic, userBackgroundsDirPublic]) {
+    try {
+      await fs.access(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await fs.mkdir(dir, { recursive: true });
+      } else { throw error; }
+    }
+  }
+}
+
+
 async function readFileData<T>(filePath: string): Promise<T[]> {
   await ensureDataDirExists();
   try {
@@ -30,6 +56,7 @@ async function readFileData<T>(filePath: string): Promise<T[]> {
     return JSON.parse(fileContent) as T[];
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      await fs.writeFile(filePath, JSON.stringify([]), 'utf-8'); // Create file if not exists
       return [];
     }
     console.error(`Error reading or parsing ${filePath}:`, error);
@@ -83,8 +110,7 @@ export async function addMessage(
     timestamp: new Date().toISOString(),
     reposts: 0,
     replyCount: 0,
-    badges: [], 
-    messageBackgroundGif: undefined, 
+    // badges and messageBackgroundGif are no longer part of Message type for individual messages
   };
 
   messages.push(newMessage);
@@ -121,32 +147,22 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   const messageToDelete = messages.find(m => m.id === messageIdToDelete);
   if (!messageToDelete) return false;
 
-  // Clean up associated files (uploaded file and background GIF) for the message being deleted
-  if (messageToDelete.fileUrl && !messageToDelete.videoEmbedUrl) { // only if it's an uploaded file, not a video link
+  if (messageToDelete.fileUrl && !messageToDelete.videoEmbedUrl) { 
     const filePath = path.join(uploadsDirPublic, path.basename(messageToDelete.fileUrl));
     try { await fs.unlink(filePath); } catch (e) { console.warn(`Could not delete file ${filePath}:`, e); }
   }
-  if (messageToDelete.messageBackgroundGif) {
-    const bgGifPath = path.join(uploadsDirPublic, path.basename(messageToDelete.messageBackgroundGif));
-    try { await fs.unlink(bgGifPath); } catch (e) { console.warn(`Could not delete background GIF ${bgGifPath}:`, e); }
-  }
+  // No longer deleting message-specific background GIFs as they don't exist on Message type
 
   const idsToDelete = new Set<string>();
   idsToDelete.add(messageIdToDelete);
 
-  // If it's a parent message, find and mark all direct replies for deletion and cleanup their files too
   if (!messageToDelete.parentId) {
     messages.forEach(msg => {
       if (msg.parentId === messageIdToDelete) {
         idsToDelete.add(msg.id);
-        // Clean up files for replies as well
         if (msg.fileUrl && !msg.videoEmbedUrl) {
           const replyFilePath = path.join(uploadsDirPublic, path.basename(msg.fileUrl));
           try { fs.unlink(replyFilePath); } catch (e) { console.warn(`Could not delete reply file ${replyFilePath}:`, e); }
-        }
-        if (msg.messageBackgroundGif) {
-          const replyBgGifPath = path.join(uploadsDirPublic, path.basename(msg.messageBackgroundGif));
-          try { fs.unlink(replyBgGifPath); } catch (e) { console.warn(`Could not delete reply background GIF ${replyBgGifPath}:`, e); }
         }
       }
     });
@@ -154,7 +170,6 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   
   messages = messages.filter(m => !idsToDelete.has(m.id));
 
-  // If the deleted message was a reply, decrement parent's replyCount
   if (messageToDelete.parentId) {
     const parentIndex = messages.findIndex(m => m.id === messageToDelete.parentId);
     if (parentIndex > -1) {
@@ -164,30 +179,6 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   
   await writeFileData<Message>(messagesFilePath, messages);
   return messages.length < originalLength;
-}
-
-export async function updateMessageBadges(messageId: string, newBadges: string[]): Promise<Message | null> {
-  let messages = await readFileData<Message>(messagesFilePath);
-  const messageIndex = messages.findIndex(m => m.id === messageId);
-  if (messageIndex > -1) {
-    messages[messageIndex].badges = [...newBadges]; 
-    await writeFileData<Message>(messagesFilePath, messages);
-    return messages[messageIndex];
-  }
-  return null;
-}
-
-export async function updateMessageBackgroundGif(messageId: string, gifUrl: string | null): Promise<Message | null> {
-  let messages = await readFileData<Message>(messagesFilePath);
-  const messageIndex = messages.findIndex(m => m.id === messageId);
-  if (messageIndex > -1) {
-    // If clearing the GIF, and there was an old one, we expect action.ts to handle file deletion.
-    // This function just updates the record.
-    messages[messageIndex].messageBackgroundGif = gifUrl ?? undefined;
-    await writeFileData<Message>(messagesFilePath, messages);
-    return messages[messageIndex];
-  }
-  return null;
 }
 
 
@@ -247,4 +238,63 @@ export async function deletePoll(pollIdToDelete: string): Promise<boolean> {
     return true;
   }
   return false;
+}
+
+// User Preferences
+export async function getUserPreferences(): Promise<UserPreference[]> {
+  return readFileData<UserPreference>(userPreferencesFilePath);
+}
+
+export async function writeUserPreferences(preferences: UserPreference[]): Promise<void> {
+  await writeFileData<UserPreference>(userPreferencesFilePath, preferences);
+}
+
+export async function upsertUserPreference(
+  nickname: string, 
+  badges?: string[], 
+  backgroundGifUrl?: string | null // null means remove
+): Promise<UserPreference> {
+  await ensureUploadsDirsExist(); // Ensure user-backgrounds dir exists
+  let preferences = await getUserPreferences();
+  const prefIndex = preferences.findIndex(p => p.nickname === nickname);
+
+  let updatedPref: UserPreference;
+
+  if (prefIndex > -1) {
+    updatedPref = { ...preferences[prefIndex] };
+    if (badges !== undefined) {
+      updatedPref.badges = badges;
+    }
+    if (backgroundGifUrl !== undefined) { // If undefined, don't touch; if null, clear; if string, set.
+      updatedPref.backgroundGifUrl = backgroundGifUrl === null ? undefined : backgroundGifUrl;
+    }
+    preferences[prefIndex] = updatedPref;
+  } else {
+    updatedPref = { 
+      nickname, 
+      badges: badges || [], 
+      backgroundGifUrl: backgroundGifUrl === null ? undefined : backgroundGifUrl 
+    };
+    preferences.push(updatedPref);
+  }
+
+  await writeUserPreferences(preferences);
+  return updatedPref;
+}
+
+export async function deleteUserBackgroundGifFile(filePathToDelete: string | undefined): Promise<void> {
+  if (!filePathToDelete) return;
+  try {
+    // filePathToDelete is like /uploads/user-backgrounds/filename.gif
+    // We need the absolute path to delete
+    const absolutePath = path.join(process.cwd(), 'public', filePathToDelete);
+    await fs.unlink(absolutePath);
+    console.log(`Successfully deleted user background GIF: ${absolutePath}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.warn(`User background GIF file not found for deletion (may have already been deleted): ${filePathToDelete}`);
+    } else {
+      console.error(`Error deleting user background GIF file ${filePathToDelete}:`, error);
+    }
+  }
 }
