@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'tenor.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   // Configure the body parser to allow larger request bodies (e.g., for file uploads)
