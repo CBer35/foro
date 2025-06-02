@@ -157,7 +157,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
         backgroundRepeat: 'no-repeat'
       } : {}}
     >
-      <div className={`${message.messageBackgroundGif ? 'bg-card/80 backdrop-blur-sm rounded-lg p-1' : ''}`}> {/* Inner div for content when BG is present */}
+      <div className={`${message.messageBackgroundGif ? 'bg-card/90 backdrop-blur-md rounded-lg p-1' : ''}`}> {/* Inner div for content when BG is present */}
         <CardHeader className="flex flex-row items-start space-x-3 pb-2">
           <Avatar>
             <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>

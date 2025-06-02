@@ -139,7 +139,7 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
         backgroundPosition: 'center'
       } : {})}
     >
-      <div className={`${(gifPreview || message.messageBackgroundGif) ? 'bg-card/80 backdrop-blur-sm rounded-lg' : ''}`}>
+      <div className={`${(gifPreview || message.messageBackgroundGif) ? 'bg-card/90 backdrop-blur-md rounded-lg' : ''}`}>
         <CardHeader className="flex flex-row items-start space-x-3 pb-2">
           <Avatar>
             <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
@@ -283,3 +283,4 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
     </Card>
   );
 }
+
