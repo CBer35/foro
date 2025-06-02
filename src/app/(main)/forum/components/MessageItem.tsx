@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Repeat, Paperclip, MessageSquareReply, MessagesSquare, PlayCircle, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction, fetchRepliesAction } from '@/lib/actions';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast'; // Added useToast
 import Image from 'next/image';
 import Link from 'next/link';
 import MessageForm from './MessageForm';
@@ -18,12 +18,12 @@ interface MessageItemProps {
   message: Message;
   currentNickname: string;
   onMessageUpdated: (updatedMessage: Message) => void;
-  onReplyCommitted?: (newReply: Message, parentId: string) => void;
+  onReplyCommitted?: (newReply: Message, parentId: string) => void; // This prop seems unused by ForumClientContent
   isReply?: boolean;
 }
 
 export default function MessageItem({ message: initialMessage, currentNickname, onMessageUpdated, onReplyCommitted, isReply = false }: MessageItemProps) {
-  const { toast } = useToast();
+  const { toast } = useToast(); // Initialized toast
   const [message, setMessage] = useState<Message>(initialMessage);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -88,6 +88,10 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
     if (onReplyCommitted) {
         onReplyCommitted(newReply, message.id);
     }
+    toast({ // Toast for own reply
+        title: "Respuesta Enviada",
+        description: "Tu respuesta ha sido publicada."
+    });
   };
 
   const handleChildCommentUpdated = (updatedChildComment: Message) => {
@@ -157,7 +161,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
         backgroundRepeat: 'no-repeat'
       } : {}}
     >
-      <div className={`${message.messageBackgroundGif ? 'bg-card/90 backdrop-blur-md rounded-lg p-1' : ''}`}> {/* Inner div for content when BG is present */}
+      <div className={`${message.messageBackgroundGif ? 'bg-card/90 backdrop-blur-md rounded-lg p-1' : ''}`}>
         <CardHeader className="flex flex-row items-start space-x-3 pb-2">
           <Avatar>
             <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
@@ -302,7 +306,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
             )}
           </div>
         )}
-      </div> {/* End inner div for BG */}
+      </div>
     </Card>
   );
 }

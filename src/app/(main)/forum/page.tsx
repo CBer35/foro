@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import ForumClientContent from './components/ForumClientContent';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getMessages, getPolls } from '@/lib/file-store';
+import { getAllMessagesWithReplies, getPolls } from '@/lib/file-store'; // Changed to getAllMessagesWithReplies
 import type { Message, Poll } from '@/types';
 
 export default async function ForumPage() {
@@ -14,19 +14,16 @@ export default async function ForumPage() {
     redirect('/');
   }
 
-  // Fetch initial data from local files
-  // These functions now return promises, so await them.
   let initialMessages: Message[] = [];
   let initialPolls: Poll[] = [];
   let errorLoadingData: string | null = null;
 
   try {
-    initialMessages = await getMessages();
+    initialMessages = await getAllMessagesWithReplies(); // Fetch all messages initially
     initialPolls = await getPolls();
   } catch (error) {
     console.error("Error loading forum data from files:", error);
     errorLoadingData = "Could not load forum data. Please try again later.";
-    // Initialize with empty arrays to prevent client errors if props are expected
     initialMessages = [];
     initialPolls = [];
   }
@@ -55,7 +52,7 @@ export default async function ForumPage() {
       )}
       <ForumClientContent 
         initialNickname={nickname} 
-        initialMessages={initialMessages}
+        initialMessages={initialMessages} // Pass all messages
         initialPolls={initialPolls}
       />
     </div>
