@@ -47,15 +47,26 @@ async function writeFileData<T>(filePath: string, data: T[]): Promise<void> {
 }
 
 // Messages
-export async function getMessages(): Promise<Message[]> {
+export async function getMessages(includeRepliesFlat: boolean = false): Promise<Message[]> {
+  const messages = await readFileData<Message>(messagesFilePath);
+  if (includeRepliesFlat) {
+    return messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+  return messages
+    .filter(msg => !msg.parentId) // Only top-level messages by default for forum view
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+export async function getAllMessagesWithReplies(): Promise<Message[]> {
   const messages = await readFileData<Message>(messagesFilePath);
   return messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
+
 export async function addMessage(
   messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
 ): Promise<Message> {
-  const messages = await getMessages();
+  const messages = await readFileData<Message>(messagesFilePath); // Read all messages
 
   const newMessage: Message = {
     nickname: messageDetails.nickname,
@@ -64,15 +75,15 @@ export async function addMessage(
     fileName: messageDetails.fileName,
     fileType: messageDetails.fileType,
     fileUrl: messageDetails.fileUrl,
-    videoEmbedUrl: messageDetails.videoEmbedUrl, // Added videoEmbedUrl
+    videoEmbedUrl: messageDetails.videoEmbedUrl,
     parentId: messageDetails.parentId,
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
-    replyCount: messageDetails.replyCount || 0,
+    replyCount: 0, // Initialize replyCount to 0
   };
 
-  messages.unshift(newMessage);
+  messages.push(newMessage); // Add to the full list
 
   if (newMessage.parentId) {
     const parentMessageIndex = messages.findIndex(m => m.id === newMessage.parentId);
@@ -83,12 +94,14 @@ export async function addMessage(
     }
   }
 
+  // Sort messages by timestamp before writing, so they are generally in order in the file
+  messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   await writeFileData<Message>(messagesFilePath, messages);
   return newMessage;
 }
 
 export async function incrementMessageReposts(messageId: string): Promise<Message | null> {
-  let messages = await getMessages();
+  let messages = await readFileData<Message>(messagesFilePath);
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
     messages[messageIndex].reposts = (messages[messageIndex].reposts || 0) + 1;
@@ -97,6 +110,40 @@ export async function incrementMessageReposts(messageId: string): Promise<Messag
   }
   return null;
 }
+
+export async function deleteMessageAndReplies(messageIdToDelete: string): Promise<boolean> {
+  let messages = await readFileData<Message>(messagesFilePath);
+  const originalLength = messages.length;
+
+  const messageToDelete = messages.find(m => m.id === messageIdToDelete);
+  if (!messageToDelete) return false;
+
+  const idsToDelete = new Set<string>();
+  idsToDelete.add(messageIdToDelete);
+
+  // If it's a parent message, find and mark its direct replies for deletion
+  if (!messageToDelete.parentId) {
+    messages.forEach(msg => {
+      if (msg.parentId === messageIdToDelete) {
+        idsToDelete.add(msg.id);
+      }
+    });
+  }
+  
+  messages = messages.filter(m => !idsToDelete.has(m.id));
+
+  // If the deleted message was a reply, decrement parent's replyCount
+  if (messageToDelete.parentId) {
+    const parentIndex = messages.findIndex(m => m.id === messageToDelete.parentId);
+    if (parentIndex > -1) {
+      messages[parentIndex].replyCount = Math.max(0, (messages[parentIndex].replyCount || 0) - 1);
+    }
+  }
+  
+  await writeFileData<Message>(messagesFilePath, messages);
+  return messages.length < originalLength;
+}
+
 
 // Polls
 export async function getPolls(): Promise<Poll[]> {
@@ -142,3 +189,16 @@ export async function voteOnPoll(pollId: string, optionId: string): Promise<Poll
    console.error(`Poll ${pollId} not found for voting`);
   return null;
 }
+
+export async function deletePoll(pollIdToDelete: string): Promise<boolean> {
+  let polls = await getPolls();
+  const originalLength = polls.length;
+  polls = polls.filter(p => p.id !== pollIdToDelete);
+  
+  if (polls.length < originalLength) {
+    await writeFileData<Poll>(pollsFilePath, polls);
+    return true;
+  }
+  return false;
+}
+

@@ -7,7 +7,17 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import fs from 'fs/promises';
 import path from 'path';
-import { addMessage, incrementMessageReposts, addPoll, voteOnPoll, getMessages } from './file-store';
+import { 
+  addMessage, 
+  incrementMessageReposts, 
+  addPoll, 
+  voteOnPoll, 
+  getMessages as getForumMessages, // Renamed to avoid conflict
+  getPolls as getForumPolls, // Renamed to avoid conflict
+  getAllMessagesWithReplies,
+  deleteMessageAndReplies as deleteMessageFromFileStore,
+  deletePoll as deletePollFromFileStore
+} from './file-store';
 import type { Message, Poll } from '@/types';
 
 const nicknameSchema = z.object({
@@ -113,8 +123,9 @@ export async function createMessageAction(
 
     revalidatePath('/forum'); 
     if (parentId) {
-        revalidatePath(`/forum/message/${parentId}`);
+        revalidatePath(`/forum/message/${parentId}`); // Placeholder, actual reply viewing might need more specific reval
     }
+    revalidatePath('/admin/messages');
     return { success: 'Message posted successfully!', message: newMessage };
 
   } catch (e) {
@@ -136,6 +147,7 @@ export async function repostMessageAction(messageId: string): Promise<{ success?
       return { error: 'Message not found or failed to repost.'};
     }
     revalidatePath('/forum');
+    revalidatePath('/admin/messages');
     return { success: 'Message reposted!', updatedMessage };
   } catch (e) {
     console.error('Error reposting message:', e);
@@ -151,7 +163,7 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
     return { error: 'Only administrators can create polls.' };
   }
 
-  const nickname = "Admin"; // Polls created by admin will have "Admin" as nickname
+  const nickname = "Admin"; 
   const question = formData.get('question') as string;
   const optionTexts = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
 
@@ -172,7 +184,7 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
     const newPoll = await addPoll(pollData);
 
     revalidatePath('/forum');
-    revalidatePath('/admin'); // Also revalidate admin if polls are listed there
+    revalidatePath('/admin/polls');
     return { success: 'Poll created successfully by Admin!', poll: newPoll };
   } catch (e) {
     console.error('Error creating poll by admin:', e);
@@ -181,19 +193,13 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
 }
 
 export async function votePollAction(pollId: string, optionId: string): Promise<{ success?: string; updatedPoll?: Poll; error?: string; }> {
-  const nickname = cookies().get('nickname')?.value;
-  if (!nickname) {
-    // Allow anonymous voting or voting based on 'nickname' cookie if preferred
-    // For now, let's keep the check, but this could be removed if polls are fully public for voting
-    // return { error: 'User not authenticated to vote.' }; 
-  }
-
   try {
     const updatedPoll = await voteOnPoll(pollId, optionId);
     if(!updatedPoll) {
       return { error: 'Poll or option not found, or failed to vote.'};
     }
     revalidatePath('/forum');
+    revalidatePath('/admin/polls');
     return { success: 'Voted successfully!', updatedPoll };
   } catch (e) {
     console.error('Error voting on poll:', e);
@@ -211,8 +217,9 @@ export async function handleSignOut() {
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    const allMessages = await getMessages();
-    return allMessages.filter(msg => !msg.parentId);
+    // Use the renamed getForumMessages for the public forum
+    const topLevelMessages = await getForumMessages(false); 
+    return topLevelMessages;
   } catch (error) {
     console.error("Error in fetchLatestMessagesAction:", error);
     return []; 
@@ -221,7 +228,7 @@ export async function fetchLatestMessagesAction(): Promise<Message[]> {
 
 export async function fetchRepliesAction(parentId: string): Promise<Message[]> {
   try {
-    const allMessages = await getMessages();
+    const allMessages = await getAllMessagesWithReplies(); // Get all messages
     const replies = allMessages.filter(msg => msg.parentId === parentId);
     return replies.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   } catch (error) {
@@ -251,7 +258,6 @@ export async function adminLoginAction(prevState: any, formData: FormData) {
 
   const { username, password } = validatedFields.data;
 
-  // Ensure ADMIN_USERNAME and ADMIN_PASSWORD are set in .env.local
   const adminUser = process.env.ADMIN_USERNAME;
   const adminPass = process.env.ADMIN_PASSWORD;
 
@@ -264,7 +270,7 @@ export async function adminLoginAction(prevState: any, formData: FormData) {
     cookies().set('admin-session', 'true', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24, // 1 day
+      maxAge: 60 * 60 * 24, 
       path: '/',
       sameSite: 'Lax',
     });
@@ -277,4 +283,64 @@ export async function adminLoginAction(prevState: any, formData: FormData) {
 export async function adminLogoutAction() {
   cookies().set('admin-session', '', { maxAge: -1, path: '/', sameSite: 'Lax' });
   redirect('/admin/login');
+}
+
+export async function adminGetAllMessagesAction(): Promise<Message[]> {
+  const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) {
+    console.warn("Unauthorized attempt to fetch all messages by non-admin.");
+    return []; 
+  }
+  return getAllMessagesWithReplies();
+}
+
+export async function adminDeleteMessageAction(messageId: string): Promise<{ success?: string; error?: string; }> {
+  const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) {
+    return { error: 'Unauthorized. Only admins can delete messages.' };
+  }
+
+  try {
+    const success = await deleteMessageFromFileStore(messageId);
+    if (success) {
+      revalidatePath('/admin/messages');
+      revalidatePath('/forum'); // Also revalidate public forum
+      return { success: 'Message and any replies deleted successfully.' };
+    } else {
+      return { error: 'Message not found or already deleted.' };
+    }
+  } catch (e) {
+    console.error('Error deleting message by admin:', e);
+    return { error: 'Failed to delete message.' };
+  }
+}
+
+export async function adminGetAllPollsAction(): Promise<Poll[]> {
+   const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) {
+    console.warn("Unauthorized attempt to fetch all polls by non-admin.");
+    return [];
+  }
+  return getForumPolls(); // Uses the existing getPolls renamed for clarity
+}
+
+export async function adminDeletePollAction(pollId: string): Promise<{ success?: string; error?: string; }> {
+  const isAdmin = cookies().get('admin-session')?.value === 'true';
+  if (!isAdmin) {
+    return { error: 'Unauthorized. Only admins can delete polls.' };
+  }
+
+  try {
+    const success = await deletePollFromFileStore(pollId);
+    if (success) {
+      revalidatePath('/admin/polls');
+      revalidatePath('/forum'); // Also revalidate public forum
+      return { success: 'Poll deleted successfully.' };
+    } else {
+      return { error: 'Poll not found or already deleted.' };
+    }
+  } catch (e) {
+    console.error('Error deleting poll by admin:', e);
+    return { error: 'Failed to delete poll.' };
+  }
 }
