@@ -1,7 +1,7 @@
 
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers'; // Added headers
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
@@ -12,8 +12,8 @@ import {
   incrementMessageReposts, 
   addPoll, 
   voteOnPoll, 
-  getMessages as getForumMessages, // Renamed to avoid conflict
-  getPolls as getForumPolls, // Renamed to avoid conflict
+  getMessages as getForumMessages,
+  getPolls as getForumPolls,
   getAllMessagesWithReplies,
   deleteMessageAndReplies as deleteMessageFromFileStore,
   deletePoll as deletePollFromFileStore
@@ -61,6 +61,28 @@ export async function setNicknameAction(prevState: any, formData: FormData) {
   redirect('/forum');
 }
 
+function getIpAddress(): string | undefined {
+  const headersList = headers();
+  const xForwardedFor = headersList.get('x-forwarded-for');
+  if (xForwardedFor) {
+    return xForwardedFor.split(',')[0].trim();
+  }
+  // Fallback for Vercel or other specific environments if needed
+  // const vercelIp = headersList.get('x-vercel-forwarded-for');
+  // if (vercelIp) return vercelIp;
+  
+  // In local development without a reverse proxy, x-forwarded-for might be null.
+  // The `CF-Connecting-IP` header is used by Cloudflare.
+  const cfConnectingIp = headersList.get('cf-connecting-ip');
+  if (cfConnectingIp) return cfConnectingIp;
+
+  // Direct connection IP (less common in production behind proxies)
+  const xRealIp = headersList.get('x-real-ip');
+  if (xRealIp) return xRealIp;
+  
+  return undefined;
+}
+
 export async function createMessageAction(
   formData: FormData,
   parentId?: string
@@ -76,6 +98,7 @@ export async function createMessageAction(
   const fileInput = formData.get('file') as File | null;
   const clientFilePreview = formData.get('filePreview') as string | null;
   const videoEmbedUrl = formData.get('videoEmbedUrl') as string | null;
+  const ipAddress = getIpAddress();
 
   if (!content || content.trim().length === 0) {
     return { error: 'Message content cannot be empty.' };
@@ -87,6 +110,7 @@ export async function createMessageAction(
     const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string } = {
       nickname,
       content,
+      ipAddress, // Store IP address
     };
 
     if (parentId) {
@@ -123,7 +147,7 @@ export async function createMessageAction(
 
     revalidatePath('/forum'); 
     if (parentId) {
-        revalidatePath(`/forum/message/${parentId}`); // Placeholder, actual reply viewing might need more specific reval
+        revalidatePath(`/forum/message/${parentId}`);
     }
     revalidatePath('/admin/messages');
     return { success: 'Message posted successfully!', message: newMessage };
@@ -166,6 +190,7 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
   const nickname = "Admin"; 
   const question = formData.get('question') as string;
   const optionTexts = (formData.getAll('options[]') as string[]).filter(opt => opt.trim() !== '');
+  const ipAddress = getIpAddress();
 
   if (!question || question.trim().length === 0) {
     return { error: 'Poll question cannot be empty.' };
@@ -179,6 +204,7 @@ export async function createPollAction(formData: FormData): Promise<{ success?: 
       nickname,
       question,
       options: optionTexts,
+      ipAddress, // Store IP address
     };
 
     const newPoll = await addPoll(pollData);
@@ -217,7 +243,6 @@ export async function handleSignOut() {
 
 export async function fetchLatestMessagesAction(): Promise<Message[]> {
   try {
-    // Use the renamed getForumMessages for the public forum
     const topLevelMessages = await getForumMessages(false); 
     return topLevelMessages;
   } catch (error) {
@@ -228,7 +253,7 @@ export async function fetchLatestMessagesAction(): Promise<Message[]> {
 
 export async function fetchRepliesAction(parentId: string): Promise<Message[]> {
   try {
-    const allMessages = await getAllMessagesWithReplies(); // Get all messages
+    const allMessages = await getAllMessagesWithReplies();
     const replies = allMessages.filter(msg => msg.parentId === parentId);
     return replies.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   } catch (error) {
@@ -304,7 +329,7 @@ export async function adminDeleteMessageAction(messageId: string): Promise<{ suc
     const success = await deleteMessageFromFileStore(messageId);
     if (success) {
       revalidatePath('/admin/messages');
-      revalidatePath('/forum'); // Also revalidate public forum
+      revalidatePath('/forum'); 
       return { success: 'Message and any replies deleted successfully.' };
     } else {
       return { error: 'Message not found or already deleted.' };
@@ -321,7 +346,7 @@ export async function adminGetAllPollsAction(): Promise<Poll[]> {
     console.warn("Unauthorized attempt to fetch all polls by non-admin.");
     return [];
   }
-  return getForumPolls(); // Uses the existing getPolls renamed for clarity
+  return getForumPolls();
 }
 
 export async function adminDeletePollAction(pollId: string): Promise<{ success?: string; error?: string; }> {
@@ -334,7 +359,7 @@ export async function adminDeletePollAction(pollId: string): Promise<{ success?:
     const success = await deletePollFromFileStore(pollId);
     if (success) {
       revalidatePath('/admin/polls');
-      revalidatePath('/forum'); // Also revalidate public forum
+      revalidatePath('/forum'); 
       return { success: 'Poll deleted successfully.' };
     } else {
       return { error: 'Poll not found or already deleted.' };

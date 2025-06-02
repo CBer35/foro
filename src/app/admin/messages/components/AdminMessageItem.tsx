@@ -5,7 +5,7 @@ import type { Message } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Trash2, Reply, FileText, Video, Link as LinkIcon } from 'lucide-react';
+import { Trash2, FileText, Video, Link as LinkIcon, Fingerprint } from 'lucide-react'; // Added Fingerprint
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { adminDeleteMessageAction } from '@/lib/actions';
@@ -61,6 +61,11 @@ export default function AdminMessageItem({ message, onMessageDeleted }: AdminMes
            <p className="text-xs text-muted-foreground">
             Reposts: {message.reposts}, Replies: {message.replyCount || 0}
           </p>
+          {message.ipAddress && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Fingerprint className="h-3 w-3" /> IP: {message.ipAddress}
+            </p>
+          )}
         </div>
       </CardHeader>
       <CardContent className="pb-3">
@@ -80,7 +85,7 @@ export default function AdminMessageItem({ message, onMessageDeleted }: AdminMes
         {message.fileUrl && message.fileName && (
           <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
             <div className="flex items-center gap-1 text-muted-foreground">
-              {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail" /> : <FileText className="h-4 w-4"/> }
+              {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail"/> : <FileText className="h-4 w-4"/> }
               File: 
               <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
                  {message.fileName} ({message.fileType})

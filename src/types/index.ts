@@ -15,6 +15,7 @@ export interface Message {
   parentId?: string;
   reposts: number;
   replyCount?: number;
+  ipAddress?: string; // Added IP address
 }
 
 export interface PollOption {
@@ -30,5 +31,6 @@ export interface Poll {
   options: PollOption[];
   timestamp: string; // ISO 8601 date string
   totalVotes: number;
+  ipAddress?: string; // Added IP address
 }
 

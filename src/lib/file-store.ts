@@ -53,7 +53,7 @@ export async function getMessages(includeRepliesFlat: boolean = false): Promise<
     return messages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
   return messages
-    .filter(msg => !msg.parentId) // Only top-level messages by default for forum view
+    .filter(msg => !msg.parentId) 
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
@@ -66,7 +66,7 @@ export async function getAllMessagesWithReplies(): Promise<Message[]> {
 export async function addMessage(
   messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount'> & { parentId?: string }
 ): Promise<Message> {
-  const messages = await readFileData<Message>(messagesFilePath); // Read all messages
+  const messages = await readFileData<Message>(messagesFilePath);
 
   const newMessage: Message = {
     nickname: messageDetails.nickname,
@@ -77,13 +77,14 @@ export async function addMessage(
     fileUrl: messageDetails.fileUrl,
     videoEmbedUrl: messageDetails.videoEmbedUrl,
     parentId: messageDetails.parentId,
+    ipAddress: messageDetails.ipAddress, // Ensure ipAddress is saved
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     reposts: 0,
-    replyCount: 0, // Initialize replyCount to 0
+    replyCount: 0,
   };
 
-  messages.push(newMessage); // Add to the full list
+  messages.push(newMessage);
 
   if (newMessage.parentId) {
     const parentMessageIndex = messages.findIndex(m => m.id === newMessage.parentId);
@@ -94,7 +95,6 @@ export async function addMessage(
     }
   }
 
-  // Sort messages by timestamp before writing, so they are generally in order in the file
   messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   await writeFileData<Message>(messagesFilePath, messages);
   return newMessage;
@@ -121,7 +121,6 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   const idsToDelete = new Set<string>();
   idsToDelete.add(messageIdToDelete);
 
-  // If it's a parent message, find and mark its direct replies for deletion
   if (!messageToDelete.parentId) {
     messages.forEach(msg => {
       if (msg.parentId === messageIdToDelete) {
@@ -132,7 +131,6 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   
   messages = messages.filter(m => !idsToDelete.has(m.id));
 
-  // If the deleted message was a reply, decrement parent's replyCount
   if (messageToDelete.parentId) {
     const parentIndex = messages.findIndex(m => m.id === messageToDelete.parentId);
     if (parentIndex > -1) {
@@ -151,7 +149,7 @@ export async function getPolls(): Promise<Poll[]> {
   return polls.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
-export async function addPoll(pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'options'> & { options: string[] }): Promise<Poll> {
+export async function addPoll(pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVotes' | 'options'> & { options: string[], ipAddress?: string }): Promise<Poll> {
   const polls = await getPolls();
   const newPoll: Poll = {
     id: `poll_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
@@ -162,6 +160,7 @@ export async function addPoll(pollData: Omit<Poll, 'id' | 'timestamp' | 'totalVo
       text,
       votes: 0,
     })),
+    ipAddress: pollData.ipAddress, // Ensure ipAddress is saved
     timestamp: new Date().toISOString(),
     totalVotes: 0,
   };

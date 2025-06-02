@@ -4,7 +4,7 @@
 import type { Poll } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Trash2, BarChartBig } from 'lucide-react';
+import { Trash2, BarChartBig, Fingerprint } from 'lucide-react'; // Added Fingerprint
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { adminDeletePollAction } from '@/lib/actions';
@@ -49,6 +49,11 @@ export default function AdminPollItem({ poll, onPollDeleted }: AdminPollItemProp
         <CardDescription className="text-xs">
           ID: {poll.id} • Posted by {poll.nickname} • {formatDistanceToNow(new Date(poll.timestamp), { addSuffix: true })} • {poll.totalVotes} vote(s)
         </CardDescription>
+         {poll.ipAddress && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Fingerprint className="h-3 w-3" /> IP: {poll.ipAddress}
+            </p>
+          )}
       </CardHeader>
       <CardContent className="pb-4 text-sm">
         <ul className="space-y-2">
