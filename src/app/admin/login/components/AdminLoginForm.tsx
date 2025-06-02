@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useFormStatus, useFormState } from 'react-dom';
-import { useEffect } from 'react';
+import { useFormStatus } from 'react-dom';
+import { useActionState, useEffect } from 'react'; // Updated import
 import { adminLoginAction } from '@/lib/actions';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,7 @@ function SubmitButton() {
 }
 
 export default function AdminLoginForm() {
-  const [state, formAction] = useFormState(adminLoginAction, initialState);
+  const [state, formAction] = useActionState(adminLoginAction, initialState); // Updated hook
   const { toast } = useToast();
 
   useEffect(() => {
