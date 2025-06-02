@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Repeat, Paperclip, MessageSquareReply, MessagesSquare, PlayCircle, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { repostMessageAction, fetchRepliesAction } from '@/lib/actions';
-import { useToast } from '@/hooks/use-toast'; // Added useToast
+import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import Link from 'next/link';
 import MessageForm from './MessageForm';
@@ -18,12 +18,12 @@ interface MessageItemProps {
   message: Message;
   currentNickname: string;
   onMessageUpdated: (updatedMessage: Message) => void;
-  onReplyCommitted?: (newReply: Message, parentId: string) => void; // This prop seems unused by ForumClientContent
+  onReplyCommitted?: (newReply: Message, parentId: string) => void;
   isReply?: boolean;
 }
 
 export default function MessageItem({ message: initialMessage, currentNickname, onMessageUpdated, onReplyCommitted, isReply = false }: MessageItemProps) {
-  const { toast } = useToast(); // Initialized toast
+  const { toast } = useToast();
   const [message, setMessage] = useState<Message>(initialMessage);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [showReplyForm, setShowReplyForm] = useState(false);
@@ -88,7 +88,7 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
     if (onReplyCommitted) {
         onReplyCommitted(newReply, message.id);
     }
-    toast({ // Toast for own reply
+    toast({
         title: "Respuesta Enviada",
         description: "Tu respuesta ha sido publicada."
     });
@@ -150,163 +150,163 @@ export default function MessageItem({ message: initialMessage, currentNickname, 
       default: return "bg-gray-500 text-white";
     }
   };
+  
+  const hasBackgroundGif = !!message.messageBackgroundGif;
 
   return (
     <Card 
-      className={`mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out ${isReply ? 'ml-6 sm:ml-10 border-l-2 border-primary/30 pl-3' : ''}`}
-      style={message.messageBackgroundGif ? { 
+      className={`mb-4 shadow-md hover:shadow-lg transition-shadow duration-300 ease-in-out relative ${isReply ? 'ml-6 sm:ml-10 border-l-2 border-primary/30 pl-3' : ''}`}
+      style={hasBackgroundGif ? { 
         backgroundImage: `url('${message.messageBackgroundGif}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat'
       } : {}}
     >
-      <div className={`${message.messageBackgroundGif ? 'bg-card/90 backdrop-blur-md rounded-lg p-1' : ''}`}>
-        <CardHeader className="flex flex-row items-start space-x-3 pb-2">
-          <Avatar>
-            <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <CardTitle className="text-lg font-semibold flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>{message.nickname || 'Anonymous'}</span>
-              {message.badges && message.badges.map(badge => (
-                <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
-                  {badge}
-                </span>
-              ))}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
-              {message.parentId && !isReply && <span className="italic text-muted-foreground/80"> (reply)</span>}
-            </p>
+      <CardHeader className={`flex flex-row items-start space-x-3 pb-2 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 rounded-t-lg m-1 mb-0' : ''}`}>
+        <Avatar>
+          <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
+        </Avatar>
+        <div>
+          <CardTitle className="text-lg font-semibold flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>{message.nickname || 'Anonymous'}</span>
+            {message.badges && message.badges.map(badge => (
+              <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
+                {badge}
+              </span>
+            ))}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
+            {message.parentId && !isReply && <span className="italic text-muted-foreground/80"> (reply)</span>}
+          </p>
+        </div>
+      </CardHeader>
+      <CardContent className={`pb-3 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 rounded-b-lg m-1 mt-0 relative z-10' : ''}`}>
+        <p className="whitespace-pre-wrap">{message.content}</p>
+        
+        {videoToEmbed && (
+          <div className="mt-3 max-w-md mx-auto">
+            {!showVideoPlayer ? (
+              <div 
+                className="aspect-video p-4 border rounded-lg bg-secondary/20 hover:bg-secondary/40 cursor-pointer flex items-center justify-center flex-col shadow-sm"
+                onClick={() => setShowVideoPlayer(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
+                aria-label="Reproducir video"
+              >
+                <PlayCircle className="h-12 w-12 text-primary mb-1" />
+                <p className="text-xs font-medium text-primary">Video incrustado [ver]</p>
+              </div>
+            ) : (
+              <div className="aspect-video overflow-hidden rounded-lg shadow-sm bg-black">
+                {isYouTubeUrl(message.videoEmbedUrl || '') ? (
+                  <iframe
+                    src={convertYouTubeUrlToEmbed(message.videoEmbedUrl!)}
+                    title="YouTube video player"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    className="w-full h-full" 
+                  ></iframe>
+                ) : isVimeoUrl(message.videoEmbedUrl || '') ? (
+                  <iframe
+                    src={convertVimeoUrlToEmbed(message.videoEmbedUrl!)}
+                    title="Vimeo video player"
+                    frameBorder="0"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                  ></iframe>
+                ) : directVideoLink || uploadedVideoFile ? (
+                  <video
+                    src={directVideoLink || uploadedVideoFile!}
+                    controls
+                    controlsList="nodownload"
+                    className="w-full h-full bg-black"
+                    preload="metadata"
+                    autoPlay 
+                  />
+                ) : null}
+              </div>
+            )}
           </div>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <p className="whitespace-pre-wrap">{message.content}</p>
-          
-          {videoToEmbed && (
-            <div className="mt-3 max-w-md mx-auto">
-              {!showVideoPlayer ? (
-                <div 
-                  className="aspect-video p-4 border rounded-lg bg-secondary/20 hover:bg-secondary/40 cursor-pointer flex items-center justify-center flex-col shadow-sm"
-                  onClick={() => setShowVideoPlayer(true)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowVideoPlayer(true);}}
-                  aria-label="Reproducir video"
-                >
-                  <PlayCircle className="h-12 w-12 text-primary mb-1" />
-                  <p className="text-xs font-medium text-primary">Video incrustado [ver]</p>
-                </div>
-              ) : (
-                <div className="aspect-video overflow-hidden rounded-lg shadow-sm bg-black">
-                  {isYouTubeUrl(message.videoEmbedUrl || '') ? (
-                    <iframe
-                      src={convertYouTubeUrlToEmbed(message.videoEmbedUrl!)}
-                      title="YouTube video player"
-                      frameBorder="0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      allowFullScreen
-                      className="w-full h-full" 
-                    ></iframe>
-                  ) : isVimeoUrl(message.videoEmbedUrl || '') ? (
-                    <iframe
-                      src={convertVimeoUrlToEmbed(message.videoEmbedUrl!)}
-                      title="Vimeo video player"
-                      frameBorder="0"
-                      allow="autoplay; fullscreen; picture-in-picture"
-                      allowFullScreen
-                      className="w-full h-full"
-                    ></iframe>
-                  ) : directVideoLink || uploadedVideoFile ? (
-                    <video
-                      src={directVideoLink || uploadedVideoFile!}
-                      controls
-                      controlsList="nodownload"
-                      className="w-full h-full bg-black"
-                      preload="metadata"
-                      autoPlay 
-                    />
-                  ) : null}
-                </div>
-              )}
+        )}
+
+        {!videoToEmbed && message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
+          <div className="mt-3 p-3 border rounded-md bg-secondary/30">
+            <div className="flex items-center gap-2 mb-2">
+              <Paperclip className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium text-sm">{message.fileName}</span>
+            </div>
+            <Image 
+              src={message.filePreview || message.fileUrl} 
+              alt={message.fileName} 
+              width={200} height={150} 
+              className="rounded-md object-cover max-h-48"
+              data-ai-hint="attached image"
+            />
+          </div>
+        ) : !videoToEmbed && message.fileUrl && message.fileName ? (
+          <div className="mt-3 p-3 border rounded-md bg-secondary/30">
+            <div className="flex items-center gap-2 mb-2">
+              <Paperclip className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium text-sm">{message.fileName}</span>
+            </div>
+            <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Download {message.fileName}
+            </Link>
+          </div>
+        ) : null}
+      </CardContent>
+      <CardFooter className={`flex justify-between items-center pt-0 ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm p-3 rounded-b-lg m-1 mt-0 relative z-0' : ''}`}>
+        <div className="flex gap-1">
+          {!isReply && (
+            <>
+              <Button variant="ghost" size="sm" onClick={handleToggleReplyForm} aria-label="Reply to message">
+                <MessageSquareReply className="h-4 w-4 mr-1" /> {showReplyForm ? 'Cancel Reply' : 'Reply'}
+              </Button>
+              {(message.replyCount || 0) > 0 || showComments ? (
+                <Button variant="ghost" size="sm" onClick={handleToggleComments} aria-label="View comments">
+                  <MessagesSquare className="h-4 w-4 mr-1" /> 
+                  {showComments ? 'Hide Comments' : `View Comments (${message.replyCount || 0})`}
+                </Button>
+              ) : null}
+            </>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleRepost} aria-label="Repost message">
+          <Repeat className="h-4 w-4 mr-1" /> Repost ({message.reposts})
+        </Button>
+      </CardFooter>
+
+      {showReplyForm && !isReply && (
+        <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm m-1 mt-0 rounded-b-lg' : ''}`}>
+          <MessageForm onMessageCommitted={handleReplyCommittedChild} parentId={message.id} />
+        </div>
+      )}
+
+      {showComments && !isReply && (
+         <div className={`p-4 border-t ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm m-1 mt-0 rounded-b-lg' : ''}`}>
+          <h3 className="text-md font-semibold mb-3">Comments:</h3>
+          {isLoadingComments && <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /> <span className="ml-2">Loading comments...</span></div>}
+          {!isLoadingComments && comments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
+          {!isLoadingComments && comments.length > 0 && (
+            <div className="space-y-4">
+              {comments.map(comment => (
+                <MessageItem 
+                  key={comment.id} 
+                  message={comment} 
+                  currentNickname={currentNickname}
+                  onMessageUpdated={handleChildCommentUpdated} 
+                  isReply={true}
+                />
+              ))}
             </div>
           )}
-
-          {!videoToEmbed && message.fileUrl && message.fileName && message.fileType?.startsWith('image/') ? (
-            <div className="mt-3 p-3 border rounded-md bg-secondary/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Paperclip className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium text-sm">{message.fileName}</span>
-              </div>
-              <Image 
-                src={message.filePreview || message.fileUrl} 
-                alt={message.fileName} 
-                width={200} height={150} 
-                className="rounded-md object-cover max-h-48"
-                data-ai-hint="attached image"
-              />
-            </div>
-          ) : !videoToEmbed && message.fileUrl && message.fileName ? (
-            <div className="mt-3 p-3 border rounded-md bg-secondary/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Paperclip className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium text-sm">{message.fileName}</span>
-              </div>
-              <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                Download {message.fileName}
-              </Link>
-            </div>
-          ) : null}
-        </CardContent>
-        <CardFooter className="flex justify-between items-center pt-0">
-          <div className="flex gap-1">
-            {!isReply && (
-              <>
-                <Button variant="ghost" size="sm" onClick={handleToggleReplyForm} aria-label="Reply to message">
-                  <MessageSquareReply className="h-4 w-4 mr-1" /> {showReplyForm ? 'Cancel Reply' : 'Reply'}
-                </Button>
-                {(message.replyCount || 0) > 0 || showComments ? (
-                  <Button variant="ghost" size="sm" onClick={handleToggleComments} aria-label="View comments">
-                    <MessagesSquare className="h-4 w-4 mr-1" /> 
-                    {showComments ? 'Hide Comments' : `View Comments (${message.replyCount || 0})`}
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={handleRepost} aria-label="Repost message">
-            <Repeat className="h-4 w-4 mr-1" /> Repost ({message.reposts})
-          </Button>
-        </CardFooter>
-
-        {showReplyForm && !isReply && (
-          <div className="p-4 border-t">
-            <MessageForm onMessageCommitted={handleReplyCommittedChild} parentId={message.id} />
-          </div>
-        )}
-
-        {showComments && !isReply && (
-          <div className="p-4 border-t">
-            <h3 className="text-md font-semibold mb-3">Comments:</h3>
-            {isLoadingComments && <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /> <span className="ml-2">Loading comments...</span></div>}
-            {!isLoadingComments && comments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
-            {!isLoadingComments && comments.length > 0 && (
-              <div className="space-y-4">
-                {comments.map(comment => (
-                  <MessageItem 
-                    key={comment.id} 
-                    message={comment} 
-                    currentNickname={currentNickname}
-                    onMessageUpdated={handleChildCommentUpdated} 
-                    isReply={true}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </Card>
   );
 }

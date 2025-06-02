@@ -62,6 +62,7 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
       toast({ title: "Success", description: `Badge '${badge}' toggled.` });
       setMessage(result.updatedMessage);
       onMessageUpdated(result.updatedMessage);
+      setGifPreview(result.updatedMessage.messageBackgroundGif || null); // Update gifPreview too as message object changes
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     }
@@ -73,15 +74,10 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
       if (file.type !== 'image/gif') {
         toast({ title: "Invalid File", description: "Please select a GIF file.", variant: "destructive" });
         setSelectedGifFile(null);
-        setGifPreview(message.messageBackgroundGif || null); // Revert to original or null
+        setGifPreview(message.messageBackgroundGif || null); 
         if (gifInputRef.current) gifInputRef.current.value = "";
         return;
       }
-      // Optional: Add size check here
-      // if (file.size > 5 * 1024 * 1024) { // 5MB limit
-      //   toast({ title: "File too large", description: "GIF should be smaller than 5MB.", variant: "destructive" });
-      //   return;
-      // }
       setSelectedGifFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -95,8 +91,7 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
   };
 
   const handleSetBackgroundGifSubmit = async (formData: FormData) => {
-    // 'action' field is not needed as separate buttons handle logic
-    if (!selectedGifFile && !formData.has('action')) { // If no file and not explicitly removing
+    if (!selectedGifFile && !formData.has('action')) { 
         toast({ title: "No file", description: "Please select a GIF to upload or click 'Remove Background'.", variant: "default" });
         return;
     }
@@ -109,10 +104,9 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
       setSelectedGifFile(null); 
       setGifPreview(result.updatedMessage.messageBackgroundGif || null);
       if (gifInputRef.current) gifInputRef.current.value = ""; 
-      gifFormRef.current?.reset();
+      // gifFormRef.current?.reset(); // Don't reset form to keep file input clear if needed
     } else if (result?.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
-      // Revert preview if upload failed but a file was selected
       if(selectedGifFile) setGifPreview(message.messageBackgroundGif || null);
     }
   };
@@ -126,161 +120,166 @@ export default function AdminMessageItem({ message: initialMessage, onMessageDel
     }
   };
 
+  const currentBgForCard = gifPreview || message.messageBackgroundGif;
+  const hasBackgroundGif = !!currentBgForCard;
+
   return (
     <Card 
-      className={`shadow-sm ${message.parentId ? 'ml-6 border-l-2 border-muted pl-3' : ''}`}
-      style={gifPreview ? { 
-        backgroundImage: `url('${gifPreview}')`,
+      className={`shadow-sm relative ${message.parentId ? 'ml-6 border-l-2 border-muted pl-3' : ''}`}
+      style={hasBackgroundGif ? { 
+        backgroundImage: `url('${currentBgForCard}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center'
-      } : ( message.messageBackgroundGif ? {
-        backgroundImage: `url('${message.messageBackgroundGif}')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      } : {})}
+      } : {}}
     >
-      <div className={`${(gifPreview || message.messageBackgroundGif) ? 'bg-card/90 backdrop-blur-md rounded-lg' : ''}`}>
-        <CardHeader className="flex flex-row items-start space-x-3 pb-2">
-          <Avatar>
-            <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <CardTitle className="text-md font-semibold flex items-center gap-2">
-              {message.nickname || 'Anonymous'}
-              {message.badges && message.badges.map(badge => (
-                <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
-                  {badge}
-                </span>
-              ))}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              ID: {message.id} • Posted {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
-              {message.parentId && <span className="italic text-muted-foreground/80"> (reply to {message.parentId})</span>}
-            </CardDescription>
-            <p className="text-xs text-muted-foreground">
-              Reposts: {message.reposts}, Replies: {message.replyCount || 0}
+      <CardHeader className={`flex flex-row items-start space-x-3 pb-2 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 rounded-t-lg m-1 mb-0' : ''}`}>
+        <Avatar>
+          <AvatarFallback className="bg-primary text-primary-foreground font-bold">{getInitials(message.nickname)}</AvatarFallback>
+        </Avatar>
+        <div>
+          <CardTitle className="text-md font-semibold flex items-center gap-2">
+            {message.nickname || 'Anonymous'}
+            {message.badges && message.badges.map(badge => (
+              <span key={badge} className={`px-2 py-0.5 text-xs rounded-full font-medium ${getBadgeStyle(badge)}`}>
+                {badge}
+              </span>
+            ))}
+          </CardTitle>
+          <CardDescription className="text-xs">
+            ID: {message.id} • Posted {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
+            {message.parentId && <span className="italic text-muted-foreground/80"> (reply to {message.parentId})</span>}
+          </CardDescription>
+          <p className="text-xs text-muted-foreground">
+            Reposts: {message.reposts}, Replies: {message.replyCount || 0}
+          </p>
+          {message.ipAddress && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Fingerprint className="h-3 w-3" /> IP: {message.ipAddress}
             </p>
-            {message.ipAddress && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Fingerprint className="h-3 w-3" /> IP: {message.ipAddress}
-              </p>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-          
-          {message.videoEmbedUrl && (
-            <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <Video className="h-4 w-4"/> Video Link: 
-                <Link href={message.videoEmbedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
-                  {message.videoEmbedUrl}
-                </Link>
-              </div>
-            </div>
           )}
-
-          {message.fileUrl && message.fileName && (
-            <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
-              <div className="flex items-center gap-1 text-muted-foreground">
-                {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail"/> : <FileText className="h-4 w-4"/> }
-                File: 
-                <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
-                  {message.fileName} ({message.fileType})
-                </Link>
-              </div>
-            </div>
-          )}
-        </CardContent>
-
-        <CardFooter className="flex flex-col items-start gap-4 pt-2 border-t mt-2">
-          <div className="w-full">
-            <Label className="text-xs font-semibold">Manage Badges</Label>
-            <div className="flex gap-2 mt-1">
-              {(['admin', 'mod', 'negro'] as const).map(badgeType => (
-                <Button key={badgeType} variant="outline" size="sm" onClick={() => handleToggleBadge(badgeType)}>
-                  {message.badges?.includes(badgeType) ? <ShieldX className="mr-1 h-4 w-4 text-destructive" /> : <ShieldCheck className="mr-1 h-4 w-4 text-green-600" />}
-                  {badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}
-                </Button>
-              ))}
+        </div>
+      </CardHeader>
+      <CardContent className={`pb-3 ${hasBackgroundGif ? 'bg-card/80 backdrop-blur-sm p-3 m-1 mt-0' : ''}`}>
+        <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        
+        {message.videoEmbedUrl && (
+          <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Video className="h-4 w-4"/> Video Link: 
+              <Link href={message.videoEmbedUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                {message.videoEmbedUrl}
+              </Link>
             </div>
           </div>
-          
-          <form ref={gifFormRef} action={handleSetBackgroundGifSubmit} className="w-full space-y-2">
-            <Label htmlFor={`gifFile-${message.id}`} className="text-xs font-semibold">Set Background GIF</Label>
-            <div className="flex items-center gap-2">
-              <Input 
-                id={`gifFile-${message.id}`}
-                name="backgroundGifFile"
-                ref={gifInputRef}
-                type="file" 
-                accept="image/gif"
-                onChange={handleGifFileChange}
-                className="h-8 text-xs flex-1"
-              />
-              <Button type="submit" variant="outline" size="sm" className="h-8">
-                <UploadCloud className="mr-1 h-4 w-4" /> Set
+        )}
+
+        {message.fileUrl && message.fileName && (
+          <div className="mt-2 p-2 border rounded-md bg-secondary/30 text-xs">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              {message.fileType?.startsWith('image/') ? <Image src={message.filePreview || message.fileUrl} alt="preview" width={20} height={20} className="rounded" data-ai-hint="thumbnail"/> : <FileText className="h-4 w-4"/> }
+              File: 
+              <Link href={message.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                {message.fileName} ({message.fileType})
+              </Link>
+            </div>
+          </div>
+        )}
+      </CardContent>
+
+      <CardFooter className={`flex flex-col items-start gap-4 pt-2 ${hasBackgroundGif ? 'bg-card/70 backdrop-blur-sm p-3 rounded-b-lg m-1 mt-0' : 'border-t mt-2'}`}>
+        <div className="w-full">
+          <Label className="text-xs font-semibold">Manage Badges</Label>
+          <div className="flex gap-2 mt-1">
+            {(['admin', 'mod', 'negro'] as const).map(badgeType => (
+              <Button key={badgeType} variant="outline" size="sm" onClick={() => handleToggleBadge(badgeType)}>
+                {message.badges?.includes(badgeType) ? <ShieldX className="mr-1 h-4 w-4 text-destructive" /> : <ShieldCheck className="mr-1 h-4 w-4 text-green-600" />}
+                {badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}
+              </Button>
+            ))}
+          </div>
+        </div>
+        
+        <form ref={gifFormRef} action={handleSetBackgroundGifSubmit} className="w-full space-y-2">
+          <Label htmlFor={`gifFile-${message.id}`} className="text-xs font-semibold">Set Background GIF</Label>
+          <div className="flex items-center gap-2">
+            <Input 
+              id={`gifFile-${message.id}`}
+              name="backgroundGifFile"
+              ref={gifInputRef}
+              type="file" 
+              accept="image/gif"
+              onChange={handleGifFileChange}
+              className="h-8 text-xs flex-1"
+            />
+            <Button type="submit" variant="outline" size="sm" className="h-8">
+              <UploadCloud className="mr-1 h-4 w-4" /> Set
+            </Button>
+          </div>
+          {gifPreview && (
+            <div className="mt-1 flex items-center gap-2">
+              <Image src={gifPreview} alt="GIF preview" width={50} height={30} className="rounded border" data-ai-hint="GIF preview" />
+                <Button 
+                  type="submit" 
+                  name="action"
+                  value="remove"
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 text-destructive hover:text-destructive/80"
+                  onClick={() => {
+                    // Clear selection if removing
+                    setSelectedGifFile(null);
+                    if(gifInputRef.current) gifInputRef.current.value = "";
+                  }}
+                >
+                <XCircle className="mr-1 h-4 w-4" /> Remove BG
               </Button>
             </div>
-            {gifPreview && (
-              <div className="mt-1 flex items-center gap-2">
-                <Image src={gifPreview} alt="GIF preview" width={50} height={30} className="rounded border" data-ai-hint="GIF preview" />
-                 <Button 
-                    type="submit" 
-                    name="action"
-                    value="remove"
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 text-destructive hover:text-destructive/80"
+          )}
+            {!gifPreview && message.messageBackgroundGif && ( 
+              <div className="mt-1">
+                    <Button 
+                      type="submit" 
+                      name="action"
+                      value="remove"
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 text-destructive hover:text-destructive/80"
+                      onClick={() => {
+                        setSelectedGifFile(null);
+                        if(gifInputRef.current) gifInputRef.current.value = "";
+                      }}
                   >
-                  <XCircle className="mr-1 h-4 w-4" /> Remove BG
-                </Button>
+                      <XCircle className="mr-1 h-4 w-4" /> Remove BG
+                  </Button>
               </div>
-            )}
-             {!gifPreview && message.messageBackgroundGif && ( // Show remove button if there's an existing BG but no current preview (e.g. on initial load)
-                <div className="mt-1">
-                     <Button 
-                        type="submit" 
-                        name="action"
-                        value="remove"
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 text-destructive hover:text-destructive/80"
-                    >
-                        <XCircle className="mr-1 h-4 w-4" /> Remove BG
-                    </Button>
-                </div>
-            )}
-          </form>
-          
-          <div className="flex justify-end w-full">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete Message
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the message
-                    {message.parentId ? '' : ' and all its replies'}.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
-                    Yes, delete message
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </CardFooter>
-      </div>
+          )}
+        </form>
+        
+        <div className="flex justify-end w-full">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete Message
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the message
+                  {message.parentId ? '' : ' and all its replies'}.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+                  Yes, delete message
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </CardFooter>
     </Card>
   );
 }
-
