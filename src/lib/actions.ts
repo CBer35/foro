@@ -18,7 +18,7 @@ import {
   deleteMessageAndReplies as deleteMessageFromFileStore,
   deletePoll as deletePollFromFileStore,
   updateMessageBadges,
-  updateMessageBackgroundGif
+  updateMessageBackgroundGif as updateMessageBackgroundGifInFileStore
 } from './file-store';
 import type { Message, Poll } from '@/types';
 
@@ -27,12 +27,23 @@ const nicknameSchema = z.object({
 });
 
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-const ensureUploadsDirExists = async () => {
+const messageBackgroundsDir = path.join(uploadsDir, 'message-backgrounds');
+
+const ensureUploadsDirsExist = async () => {
   try {
     await fs.access(uploadsDir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       await fs.mkdir(uploadsDir, { recursive: true });
+    } else {
+      throw error;
+    }
+  }
+  try {
+    await fs.access(messageBackgroundsDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      await fs.mkdir(messageBackgroundsDir, { recursive: true });
     } else {
       throw error;
     }
@@ -98,7 +109,7 @@ export async function createMessageAction(
   }
 
   try {
-    await ensureUploadsDirExists();
+    await ensureUploadsDirsExist();
 
     const messageDetails: Omit<Message, 'id' | 'timestamp' | 'reposts' | 'replyCount' | 'badges' | 'messageBackgroundGif'> & { parentId?: string } = {
       nickname,
@@ -230,7 +241,8 @@ export async function votePollAction(pollId: string, optionId: string): Promise<
 }
 
 export async function handleSignOut() {
-  cookies().set('nickname', '', { maxAge: -1, path: '/', sameSite: 'Lax' });
+  cookies().delete('nickname'); // More explicit deletion
+  revalidatePath('/');
   redirect('/');
 }
 
@@ -299,7 +311,8 @@ export async function adminLoginAction(prevState: any, formData: FormData) {
 }
 
 export async function adminLogoutAction() {
-  cookies().set('admin-session', '', { maxAge: -1, path: '/', sameSite: 'Lax' });
+  cookies().delete('admin-session'); // More explicit deletion
+  revalidatePath('/admin/login');
   redirect('/admin/login');
 }
 
@@ -363,7 +376,6 @@ export async function adminDeletePollAction(pollId: string): Promise<{ success?:
   }
 }
 
-// New admin actions for badges and background GIF
 const badgeSchema = z.enum(["admin", "mod", "negro"]);
 
 export async function adminToggleMessageBadgeAction(messageId: string, badge: string): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
@@ -374,7 +386,7 @@ export async function adminToggleMessageBadgeAction(messageId: string, badge: st
   if (!validatedBadge.success) return { error: 'Invalid badge type.' };
   
   try {
-    const messages = await getAllMessagesWithReplies(); // Fetch all messages
+    const messages = await getAllMessagesWithReplies(); 
     const messageIndex = messages.findIndex(m => m.id === messageId);
     if (messageIndex === -1) return { error: 'Message not found.' };
 
@@ -382,9 +394,9 @@ export async function adminToggleMessageBadgeAction(messageId: string, badge: st
     let currentBadges = currentMessage.badges ? [...currentMessage.badges] : [];
     
     if (currentBadges.includes(validatedBadge.data)) {
-      currentBadges = currentBadges.filter(b => b !== validatedBadge.data); // Remove badge
+      currentBadges = currentBadges.filter(b => b !== validatedBadge.data); 
     } else {
-      currentBadges.push(validatedBadge.data); // Add badge
+      currentBadges.push(validatedBadge.data); 
     }
     
     const updatedMessage = await updateMessageBadges(messageId, currentBadges);
@@ -400,30 +412,88 @@ export async function adminToggleMessageBadgeAction(messageId: string, badge: st
   }
 }
 
-const gifUrlSchema = z.string().url({ message: "Invalid GIF URL." }).or(z.literal('')); // Allow empty string to clear
-
-export async function adminSetMessageBackgroundGifAction(messageId: string, gifUrl: string | null): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
+export async function adminSetMessageBackgroundGifAction(messageId: string, formData: FormData): Promise<{ success?: string; error?: string; updatedMessage?: Message; }> {
   const isAdmin = cookies().get('admin-session')?.value === 'true';
   if (!isAdmin) return { error: 'Unauthorized.' };
 
-  if (gifUrl !== null && gifUrl.trim() !== '') {
-    const validatedUrl = gifUrlSchema.safeParse(gifUrl);
-    if (!validatedUrl.success) {
-      return { error: validatedUrl.error.flatten().formErrors.join(', ') };
+  const action = formData.get('action') as string;
+
+  if (action === 'remove') {
+    try {
+      // Attempt to find the current message to delete its old background if it exists
+      const messages = await getAllMessagesWithReplies();
+      const currentMessage = messages.find(m => m.id === messageId);
+      if (currentMessage && currentMessage.messageBackgroundGif) {
+        const oldGifPath = path.join(process.cwd(), 'public', currentMessage.messageBackgroundGif);
+        try {
+          await fs.unlink(oldGifPath);
+        } catch (unlinkError) {
+          // Log error if old file deletion fails, but proceed to clear DB record
+          console.warn(`Could not delete old background GIF file ${oldGifPath}:`, unlinkError);
+        }
+      }
+
+      const updatedMessage = await updateMessageBackgroundGifInFileStore(messageId, null);
+      if (updatedMessage) {
+        revalidatePath('/admin/messages');
+        revalidatePath('/forum');
+        return { success: 'Message background GIF removed!', updatedMessage };
+      }
+      return { error: 'Failed to remove background GIF reference.' };
+    } catch (e) {
+      console.error('Error removing background GIF:', e);
+      return { error: 'Server error removing background GIF.' };
     }
   }
+
+  const gifFile = formData.get('backgroundGifFile') as File | null;
+
+  if (!gifFile || gifFile.size === 0) {
+    return { error: 'No GIF file provided.' };
+  }
+
+  if (gifFile.type !== 'image/gif') {
+    return { error: 'Invalid file type. Please upload a GIF.' };
+  }
   
+  // Consider adding a size limit for GIFs here if needed
+  // e.g., if (gifFile.size > 5 * 1024 * 1024) { return { error: 'GIF is too large (max 5MB).'}; }
+
+
   try {
-    const finalGifUrl = (gifUrl && gifUrl.trim() !== '') ? gifUrl.trim() : null;
-    const updatedMessage = await updateMessageBackgroundGif(messageId, finalGifUrl);
+    await ensureUploadsDirsExist();
+    
+    // Delete old GIF if exists
+    const messages = await getAllMessagesWithReplies();
+    const currentMessage = messages.find(m => m.id === messageId);
+    if (currentMessage && currentMessage.messageBackgroundGif) {
+      const oldGifPath = path.join(process.cwd(), 'public', currentMessage.messageBackgroundGif);
+      try {
+        await fs.unlink(oldGifPath);
+      } catch (unlinkError) {
+        console.warn(`Could not delete old background GIF file ${oldGifPath} before update:`, unlinkError);
+      }
+    }
+
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const extension = path.extname(gifFile.name) || '.gif'; // Ensure .gif if original name lacks it
+    const uniqueFilename = `msgbg-${messageId.substring(0,8)}-${uniqueSuffix}${extension}`;
+    const gifPath = path.join(messageBackgroundsDir, uniqueFilename);
+    const publicGifUrl = `/uploads/message-backgrounds/${uniqueFilename}`;
+
+    const fileBuffer = Buffer.from(await gifFile.arrayBuffer());
+    await fs.writeFile(gifPath, fileBuffer);
+    
+    const updatedMessage = await updateMessageBackgroundGifInFileStore(messageId, publicGifUrl);
     if (updatedMessage) {
       revalidatePath('/admin/messages');
       revalidatePath('/forum');
       return { success: 'Message background GIF updated!', updatedMessage };
     }
-    return { error: 'Failed to update background GIF.' };
+    return { error: 'Failed to update background GIF reference.' };
   } catch (e) {
     console.error('Error updating background GIF:', e);
-    return { error: 'Server error updating background GIF.' };
+    const errorMessage = e instanceof Error ? e.message : 'Server error updating background GIF.';
+    return { error: errorMessage };
   }
 }

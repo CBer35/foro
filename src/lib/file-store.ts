@@ -8,6 +8,7 @@ import type { Message, Poll } from '@/types';
 const dataDir = path.join(process.cwd(), 'data');
 const messagesFilePath = path.join(dataDir, 'messages.json');
 const pollsFilePath = path.join(dataDir, 'polls.json');
+const uploadsDirPublic = path.join(process.cwd(), 'public', 'uploads'); // for deletions
 
 async function ensureDataDirExists() {
   try {
@@ -82,8 +83,8 @@ export async function addMessage(
     timestamp: new Date().toISOString(),
     reposts: 0,
     replyCount: 0,
-    badges: [], // Initialize with empty badges
-    messageBackgroundGif: undefined, // Initialize with no background
+    badges: [], 
+    messageBackgroundGif: undefined, 
   };
 
   messages.push(newMessage);
@@ -120,19 +121,40 @@ export async function deleteMessageAndReplies(messageIdToDelete: string): Promis
   const messageToDelete = messages.find(m => m.id === messageIdToDelete);
   if (!messageToDelete) return false;
 
+  // Clean up associated files (uploaded file and background GIF) for the message being deleted
+  if (messageToDelete.fileUrl && !messageToDelete.videoEmbedUrl) { // only if it's an uploaded file, not a video link
+    const filePath = path.join(uploadsDirPublic, path.basename(messageToDelete.fileUrl));
+    try { await fs.unlink(filePath); } catch (e) { console.warn(`Could not delete file ${filePath}:`, e); }
+  }
+  if (messageToDelete.messageBackgroundGif) {
+    const bgGifPath = path.join(uploadsDirPublic, path.basename(messageToDelete.messageBackgroundGif));
+    try { await fs.unlink(bgGifPath); } catch (e) { console.warn(`Could not delete background GIF ${bgGifPath}:`, e); }
+  }
+
   const idsToDelete = new Set<string>();
   idsToDelete.add(messageIdToDelete);
 
+  // If it's a parent message, find and mark all direct replies for deletion and cleanup their files too
   if (!messageToDelete.parentId) {
     messages.forEach(msg => {
       if (msg.parentId === messageIdToDelete) {
         idsToDelete.add(msg.id);
+        // Clean up files for replies as well
+        if (msg.fileUrl && !msg.videoEmbedUrl) {
+          const replyFilePath = path.join(uploadsDirPublic, path.basename(msg.fileUrl));
+          try { fs.unlink(replyFilePath); } catch (e) { console.warn(`Could not delete reply file ${replyFilePath}:`, e); }
+        }
+        if (msg.messageBackgroundGif) {
+          const replyBgGifPath = path.join(uploadsDirPublic, path.basename(msg.messageBackgroundGif));
+          try { fs.unlink(replyBgGifPath); } catch (e) { console.warn(`Could not delete reply background GIF ${replyBgGifPath}:`, e); }
+        }
       }
     });
   }
   
   messages = messages.filter(m => !idsToDelete.has(m.id));
 
+  // If the deleted message was a reply, decrement parent's replyCount
   if (messageToDelete.parentId) {
     const parentIndex = messages.findIndex(m => m.id === messageToDelete.parentId);
     if (parentIndex > -1) {
@@ -148,7 +170,7 @@ export async function updateMessageBadges(messageId: string, newBadges: string[]
   let messages = await readFileData<Message>(messagesFilePath);
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
-    messages[messageIndex].badges = [...newBadges]; // Ensure it's a new array
+    messages[messageIndex].badges = [...newBadges]; 
     await writeFileData<Message>(messagesFilePath, messages);
     return messages[messageIndex];
   }
@@ -159,6 +181,8 @@ export async function updateMessageBackgroundGif(messageId: string, gifUrl: stri
   let messages = await readFileData<Message>(messagesFilePath);
   const messageIndex = messages.findIndex(m => m.id === messageId);
   if (messageIndex > -1) {
+    // If clearing the GIF, and there was an old one, we expect action.ts to handle file deletion.
+    // This function just updates the record.
     messages[messageIndex].messageBackgroundGif = gifUrl ?? undefined;
     await writeFileData<Message>(messagesFilePath, messages);
     return messages[messageIndex];
@@ -224,4 +248,3 @@ export async function deletePoll(pollIdToDelete: string): Promise<boolean> {
   }
   return false;
 }
-
