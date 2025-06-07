@@ -1,0 +1,26 @@
+
+name = "anonymchat" # IMPORTANT: Replace with your actual Cloudflare Pages project name
+compatibility_date = "2025-06-06" # Date from your build log, or a more recent one
+
+# This configuration assumes that your build process (e.g., Cloudflare Pages' Next.js preset)
+# uses a tool like @cloudflare/next-on-pages to convert your .next/ build output
+# into a Vercel-compatible output structure (.vercel/output/).
+# Wrangler can then use this structure.
+
+# Specifies the directory for static assets.
+[site]
+bucket = ".vercel/output/static"
+
+# Specifies the main entry point for the Worker script.
+# For Next.js apps processed by @cloudflare/next-on-pages, this is a common pattern.
+main = ".vercel/output/functions/[[path]].js"
+
+# Optional: If your Next.js app uses Edge Middleware, next-on-pages might generate
+# an _routes.json file. Wrangler can use this for routing.
+# routes_path = ".vercel/output/_routes.json" # Uncomment if applicable
+
+# Ensure that the build command in Cloudflare Pages (`npm run build`) correctly
+# generates the .next directory, and that Cloudflare's build process
+# then creates the .vercel/output structure before this `npx wrangler deploy` command runs.
+# If the "Deploy command" in Cloudflare Pages is manually set to `npx wrangler deploy`,
+# consider clearing it and letting the Next.js framework preset handle the deployment.
